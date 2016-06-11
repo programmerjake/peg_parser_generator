@@ -22,6 +22,9 @@
 #include "parser.h"
 #include "source.h"
 #include "error.h"
+#include "ast/dump_visitor.h"
+#include "ast/grammar.h"
+#include <iostream>
 
 int main()
 {
@@ -31,6 +34,11 @@ int main()
     {
         const Source *source = Source::load(arena, errorHandler, "test.grammar");
         ast::Grammar *grammar = parseGrammar(arena, errorHandler, source);
+        if(!errorHandler.anyErrors)
+        {
+            ast::DumpVisitor dumpVisitor(std::cout);
+            grammar->visit(dumpVisitor);
+        }
     }
     catch(FatalError &)
     {

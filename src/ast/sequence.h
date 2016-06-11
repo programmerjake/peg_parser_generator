@@ -23,6 +23,7 @@
 #define AST_SEQUENCE_H_
 
 #include "expression.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -34,6 +35,10 @@ struct Sequence final : public Expression
     Sequence(Location location, Expression *first, Expression *second)
         : Expression(std::move(location)), first(first), second(second)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitSequence(this);
     }
 };
 }

@@ -23,6 +23,7 @@
 #define AST_TERMINAL_H_
 
 #include "expression.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -32,6 +33,18 @@ struct Terminal final : public Expression
     char32_t value;
     Terminal(Location location, char32_t value) : Expression(std::move(location)), value(value)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTerminal(this);
+    }
+};
+struct EOFTerminal final : public Expression
+{
+    using Expression::Expression;
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitEOFTerminal(this);
     }
 };
 }

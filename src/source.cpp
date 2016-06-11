@@ -127,5 +127,6 @@ const Source *Source::load(Arena &arena, ErrorHandler &errorHandler, std::string
             break;
     }
     file.reset();
+    content.resize(contentLength);
     return arena.make<Source>(std::move(fileName), std::move(content));
 }

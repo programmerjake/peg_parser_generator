@@ -24,6 +24,7 @@
 
 #include "nonterminal.h"
 #include "node.h"
+#include "visitor.h"
 #include <vector>
 
 namespace ast
@@ -32,8 +33,12 @@ struct Grammar final : public Node
 {
     std::vector<Nonterminal *> nonterminals;
     Grammar(Location location, std::vector<Nonterminal *> nonterminals)
-        : Expression(std::move(location)), nonterminals(std::move(nonterminals))
+        : Node(std::move(location)), nonterminals(std::move(nonterminals))
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitGrammar(this);
     }
 };
 }

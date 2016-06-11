@@ -24,6 +24,7 @@
 
 #include "expression.h"
 #include "node.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -44,14 +45,22 @@ struct Nonterminal final : public Node
           settings(std::move(settings))
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitNonterminal(this);
+    }
 };
 
 struct NonterminalExpression final : public Expression
 {
     Nonterminal *value;
-    NonterminalExpression(Location location, const Nonterminal *value)
+    NonterminalExpression(Location location, Nonterminal *value)
         : Expression(std::move(location)), value(value)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitNonterminalExpression(this);
     }
 };
 }

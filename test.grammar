@@ -1,0 +1,66 @@
+/*
+ * Copyright (C) 2012-2016 Jacob R. Lifshay
+ * This file is part of Voxels.
+ *
+ * Voxels is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Voxels is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Voxels; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
+ *
+ */
+
+// this is an example grammar based off of ecmascript
+
+digit = "0"
+      / "1";
+
+letter = "a" 
+       / "b" 
+       / "c";
+
+identifierStart = letter / "_";
+
+identifierContinue = identifierStart / digit;
+
+newKeyword = "new" !identifierContinue;
+
+voidKeyword = "void" !identifierContinue;
+
+keyword = newKeyword
+        / voidKeyword;
+
+identifierName = identifierStart identifierContinue*;
+
+identifier = !keyword identifierName;
+
+number = digit+ ("." digit*)? (("e" / "E") ("+" / "-")? digit+)?
+       / "." digit+ (("e" / "E") ("+" / "-")? digit+)?;
+
+expression = additiveExpression ("," additiveExpression)*;
+
+additiveExpression = multiplicativeExpression (("+" / "-") multiplicativeExpression)*;
+
+multiplicativeExpression = unaryExpression (("*" / "/" / "%") unaryExpression)*;
+
+unaryExpression = "+" unaryExpression
+                / "-" unaryExpression
+                / newExpression;
+
+newExpression = newKeyword newExpression
+              / memberExpression;
+
+memberExpression = primaryExpression ("." identifier)*;
+ 
+primaryExpression = "(" expression ")"
+                  / identifier
+                  / number;

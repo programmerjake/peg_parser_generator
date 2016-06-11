@@ -23,6 +23,7 @@
 #define AST_PREDICATE_H_
 
 #include "expression.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -34,6 +35,10 @@ struct FollowedByPredicate final : public Expression
         : Expression(std::move(location)), expression(expression)
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitFollowedByPredicate(this);
+    }
 };
 
 struct NotFollowedByPredicate final : public Expression
@@ -43,11 +48,19 @@ struct NotFollowedByPredicate final : public Expression
         : Expression(std::move(location)), expression(expression)
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitNotFollowedByPredicate(this);
+    }
 };
 
 struct CustomPredicate final : public Expression
 {
     using Expression::Expression;
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitCustomPredicate(this);
+    }
 };
 }
 

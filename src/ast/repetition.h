@@ -23,6 +23,7 @@
 #define AST_REPETITION_H_
 
 #include "expression.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -34,6 +35,10 @@ struct GreedyRepetition final : public Expression
         : Expression(std::move(location)), expression(expression)
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitGreedyRepetition(this);
+    }
 };
 
 struct GreedyPositiveRepetition final : public Expression
@@ -43,6 +48,10 @@ struct GreedyPositiveRepetition final : public Expression
         : Expression(std::move(location)), expression(expression)
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitGreedyPositiveRepetition(this);
+    }
 };
 
 struct OptionalExpression final : public Expression
@@ -51,6 +60,10 @@ struct OptionalExpression final : public Expression
     OptionalExpression(Location location, Expression *expression)
         : Expression(std::move(location)), expression(expression)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitOptionalExpression(this);
     }
 };
 }

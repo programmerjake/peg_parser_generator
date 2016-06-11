@@ -23,12 +23,17 @@
 #define AST_EMPTY_H_
 
 #include "expression.h"
+#include "visitor.h"
 
 namespace ast
 {
 struct Empty final : public Expression
 {
     using Expression::Expression;
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitEmpty(this);
+    }
 };
 }
 

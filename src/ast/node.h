@@ -27,6 +27,7 @@
 
 namespace ast
 {
+struct Visitor;
 struct Node
 {
     virtual ~Node() = default;
@@ -34,6 +35,7 @@ struct Node
     explicit Node(Location location) : location(std::move(location))
     {
     }
+    virtual void visit(Visitor &visitor) = 0;
 };
 }
 

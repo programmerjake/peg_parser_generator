@@ -31,6 +31,8 @@ struct Arena;
 struct ErrorHandler;
 struct Source;
 
+struct Parser;
+
 ast::Grammar *parseGrammar(Arena &arena, ErrorHandler &errorHandler, const Source *source);
 
 #endif /* PARSER_H_ */

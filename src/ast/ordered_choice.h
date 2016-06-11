@@ -23,6 +23,7 @@
 #define AST_ORDERED_CHOICE_H_
 
 #include "expression.h"
+#include "visitor.h"
 #include <utility>
 
 namespace ast
@@ -34,6 +35,10 @@ struct OrderedChoice final : public Expression
     OrderedChoice(Location location, Expression *first, Expression *second)
         : Expression(std::move(location)), first(first), second(second)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitOrderedChoice(this);
     }
 };
 }
