@@ -76,6 +76,8 @@ public:
 
 struct DefaultErrorHandler final : public ErrorHandler
 {
+public:
+    bool anyErrors = false;
 protected:
     virtual void handleMessage(ErrorLevel errorLevel,
                                const Location &location,

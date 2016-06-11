@@ -18,7 +18,24 @@
  * MA 02110-1301, USA.
  *
  */
+#include "arena.h"
+#include "parser.h"
+#include "source.h"
+#include "error.h"
+
 int main()
 {
-#warning finish
+    Arena arena;
+    DefaultErrorHandler errorHandler;
+    try
+    {
+        const Source *source = Source::load(arena, errorHandler, "test.grammar");
+        ast::Grammar *grammar = parseGrammar(arena, errorHandler, source);
+    }
+    catch(FatalError &)
+    {
+    }
+    if(errorHandler.anyErrors)
+        return 1;
+    return 0;
 }

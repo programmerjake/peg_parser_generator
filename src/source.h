@@ -22,11 +22,12 @@
 #ifndef SOURCE_H_
 #define SOURCE_H_
 
-#include "arena.h"
 #include <string>
 #include <vector>
+#include <iosfwd>
 
 struct ErrorHandler;
+struct Arena;
 
 struct Source final
 {

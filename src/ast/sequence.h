@@ -18,18 +18,24 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_SEQUENCE_H_
+#define AST_SEQUENCE_H_
+
+#include "expression.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct Sequence final : public Expression
+{
+    Expression *first;
+    Expression *second;
+    Sequence(Location location, Expression *first, Expression *second)
+        : Expression(std::move(location)), first(first), second(second)
     {
-        os << "<empty>";
     }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+};
 }
+
+#endif /* AST_SEQUENCE_H_ */

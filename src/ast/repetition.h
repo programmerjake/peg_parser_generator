@@ -18,18 +18,41 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_REPETITION_H_
+#define AST_REPETITION_H_
+
+#include "expression.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct GreedyRepetition final : public Expression
+{
+    Expression *expression;
+    GreedyRepetition(Location location, Expression *expression)
+        : Expression(std::move(location)), expression(expression)
     {
-        os << "<empty>";
     }
-    else
+};
+
+struct GreedyPositiveRepetition final : public Expression
+{
+    Expression *expression;
+    GreedyPositiveRepetition(Location location, Expression *expression)
+        : Expression(std::move(location)), expression(expression)
     {
-        source->writeLocation(os, position);
     }
+};
+
+struct OptionalExpression final : public Expression
+{
+    Expression *expression;
+    OptionalExpression(Location location, Expression *expression)
+        : Expression(std::move(location)), expression(expression)
+    {
+    }
+};
 }
+
+#endif /* AST_REPETITION_H_ */

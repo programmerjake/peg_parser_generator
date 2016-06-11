@@ -18,18 +18,18 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_EXPRESSION_H_
+#define AST_EXPRESSION_H_
+
+#include "node.h"
+
+namespace ast
 {
-    if(!source)
-    {
-        os << "<empty>";
-    }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+struct Expression : public Node
+{
+    using Node::Node;
+};
 }
+
+#endif /* AST_EXPRESSION_H_ */

@@ -18,18 +18,23 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_NODE_H_
+#define AST_NODE_H_
+
+#include "../location.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct Node
+{
+    virtual ~Node() = default;
+    Location location;
+    explicit Node(Location location) : location(std::move(location))
     {
-        os << "<empty>";
     }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+};
 }
+
+#endif /* AST_NODE_H_ */

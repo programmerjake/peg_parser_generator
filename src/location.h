@@ -22,8 +22,9 @@
 #ifndef LOCATION_H_
 #define LOCATION_H_
 
-#include "source.h"
 #include <iosfwd>
+
+struct Source;
 
 struct Location final
 {

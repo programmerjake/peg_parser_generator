@@ -18,18 +18,42 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_NONTERMINAL_H_
+#define AST_NONTERMINAL_H_
+
+#include "expression.h"
+#include "node.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct Nonterminal final : public Node
+{
+    std::string name;
+    Expression *expression;
+    struct Settings final
     {
-        os << "<empty>";
-    }
-    else
+        bool caching = true;
+    };
+    Settings settings;
+    Nonterminal(Location location, std::string name, Expression *expression, Settings settings)
+        : Node(std::move(location)),
+          name(std::move(name)),
+          expression(expression),
+          settings(std::move(settings))
     {
-        source->writeLocation(os, position);
     }
+};
+
+struct NonterminalExpression final : public Expression
+{
+    Nonterminal *value;
+    NonterminalExpression(Location location, const Nonterminal *value)
+        : Expression(std::move(location)), value(value)
+    {
+    }
+};
 }
+
+#endif /* AST_NONTERMINAL_H_ */

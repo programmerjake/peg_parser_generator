@@ -18,18 +18,13 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#include "parser.h"
+#include "error.h"
+#include "location.h"
+
+ast::Grammar *parseGrammar(Arena &arena, ErrorHandler &errorHandler, const Source *source)
 {
-    if(!source)
-    {
-        os << "<empty>";
-    }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+    errorHandler(ErrorLevel::FatalError, Location(source, 0), "parseGrammar not implemented");
+    return nullptr;
 }

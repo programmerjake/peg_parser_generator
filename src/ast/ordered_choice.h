@@ -18,18 +18,24 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_ORDERED_CHOICE_H_
+#define AST_ORDERED_CHOICE_H_
+
+#include "expression.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct OrderedChoice final : public Expression
+{
+    Expression *first;
+    Expression *second;
+    OrderedChoice(Location location, Expression *first, Expression *second)
+        : Expression(std::move(location)), first(first), second(second)
     {
-        os << "<empty>";
     }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+};
 }
+
+#endif /* AST_ORDERED_CHOICE_H_ */

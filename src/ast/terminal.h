@@ -18,18 +18,22 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_TERMINAL_H_
+#define AST_TERMINAL_H_
+
+#include "expression.h"
+#include <utility>
+
+namespace ast
 {
-    if(!source)
+struct Terminal final : public Expression
+{
+    char32_t value;
+    Terminal(Location location, char32_t value) : Expression(std::move(location)), value(value)
     {
-        os << "<empty>";
     }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+};
 }
+
+#endif /* AST_TERMINAL_H_ */

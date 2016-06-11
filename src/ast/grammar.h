@@ -18,18 +18,24 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef AST_GRAMMAR_H_
+#define AST_GRAMMAR_H_
+
+#include "nonterminal.h"
+#include "node.h"
+#include <vector>
+
+namespace ast
 {
-    if(!source)
+struct Grammar final : public Node
+{
+    std::vector<Nonterminal *> nonterminals;
+    Grammar(Location location, std::vector<Nonterminal *> nonterminals)
+        : Expression(std::move(location)), nonterminals(std::move(nonterminals))
     {
-        os << "<empty>";
     }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+};
 }
+
+#endif /* AST_GRAMMAR_H_ */

@@ -18,18 +18,19 @@
  * MA 02110-1301, USA.
  *
  */
-#include "location.h"
-#include "source.h"
-#include <ostream>
 
-void Location::write(std::ostream &os) const
+#ifndef PARSER_H_
+#define PARSER_H_
+
+namespace ast
 {
-    if(!source)
-    {
-        os << "<empty>";
-    }
-    else
-    {
-        source->writeLocation(os, position);
-    }
+struct Grammar;
 }
+
+struct Arena;
+struct ErrorHandler;
+struct Source;
+
+ast::Grammar *parseGrammar(Arena &arena, ErrorHandler &errorHandler, const Source *source);
+
+#endif /* PARSER_H_ */

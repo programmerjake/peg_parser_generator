@@ -21,6 +21,7 @@
 #include "source.h"
 #include "error.h"
 #include "location.h"
+#include "arena.h"
 #include <cstdio>
 #include <memory>
 #include <algorithm>
