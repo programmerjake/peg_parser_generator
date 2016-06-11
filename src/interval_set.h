@@ -19,46 +19,17 @@
  *
  */
 
-#ifndef AST_TERMINAL_H_
-#define AST_TERMINAL_H_
+#ifndef INTERVAL_SET_H_
+#define INTERVAL_SET_H_
 
-#include "expression.h"
-#include "visitor.h"
-#include "../interval_set.h"
-#include <utility>
+#include "interval.h"
 
-namespace ast
+template <typename T>
+class IntervalSet final
 {
-struct Terminal final : public Expression
-{
-    char32_t value;
-    Terminal(Location location, char32_t value) : Expression(std::move(location)), value(value)
-    {
-    }
-    virtual void visit(Visitor &visitor) override
-    {
-        visitor.visitTerminal(this);
-    }
-};
-
-struct CharacterClass final : public Expression
-{
-#if 0
-    IntervalSet<char32_t> characterSet;
-#error finish
-#else
 #warning finish
-#endif
+    ~IntervalSet() = delete; // till this class is implemented
+    IntervalSet() = delete; // till this class is implemented
 };
 
-struct EOFTerminal final : public Expression
-{
-    using Expression::Expression;
-    virtual void visit(Visitor &visitor) override
-    {
-        visitor.visitEOFTerminal(this);
-    }
-};
-}
-
-#endif /* AST_TERMINAL_H_ */
+#endif /* INTERVAL_SET_H_ */
