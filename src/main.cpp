@@ -22,9 +22,11 @@
 #include "parser.h"
 #include "source.h"
 #include "error.h"
-#include "ast/dump_visitor.h"
+#include "code_generator.h"
 #include "ast/grammar.h"
 #include <iostream>
+#include <sstream>
+#include <fstream>
 
 int main()
 {
@@ -36,8 +38,15 @@ int main()
         ast::Grammar *grammar = parseGrammar(arena, errorHandler, source);
         if(!errorHandler.anyErrors)
         {
-            ast::DumpVisitor dumpVisitor(std::cout);
-            grammar->visit(dumpVisitor);
+            std::ostringstream headerStream, sourceStream;
+            CodeGenerator::makeCPlusPlus11(sourceStream, headerStream, "test.h")->generateCode(grammar);
+            std::ofstream os;
+            os.open("test.h");
+            os << headerStream.str();
+            os.close();
+            os.open("test.cpp");
+            os << sourceStream.str();
+            os.close();
         }
     }
     catch(FatalError &)

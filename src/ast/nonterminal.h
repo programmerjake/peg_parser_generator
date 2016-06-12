@@ -26,6 +26,7 @@
 #include "node.h"
 #include "visitor.h"
 #include <utility>
+#include <string>
 
 namespace ast
 {
