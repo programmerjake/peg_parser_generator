@@ -54,7 +54,7 @@ struct InclusiveInterval final
     {
         return min > max;
     }
-    constexpr bool includes(char32_t value) const
+    constexpr bool includes(T value) const
     {
         return value >= min && value <= max;
     }
@@ -120,67 +120,73 @@ struct InclusiveInterval final
     constexpr SetOperationResults operator-(const InclusiveInterval &rt) const
     {
         return min < rt.min ?
-                   (max > rt.max ?
-                        SetOperationResults(InclusiveInterval(min, rt.min - 1),
-                            InclusiveInterval(rt.max + 1, max)) :
-                        SetOperationResults(InclusiveInterval(min, rt.min - 1))) :
-                   (max > rt.max ?
-                        SetOperationResults(InclusiveInterval(rt.max + 1, max)) :
-                        SetOperationResults());
+                   (max > rt.max ? SetOperationResults(InclusiveInterval(min, rt.min - 1),
+                                                       InclusiveInterval(rt.max + 1, max)) :
+                                   SetOperationResults(InclusiveInterval(min, rt.min - 1))) :
+                   (max > rt.max ? SetOperationResults(InclusiveInterval(rt.max + 1, max)) :
+                                   SetOperationResults());
     }
     constexpr SetOperationResults operator&(const InclusiveInterval &rt) const
     {
-        return overlaps(rt) ? SetOperationResults(InclusiveInterval(
-                                  min > rt.min ? min : rt.min, max < rt.max ? max : rt.max)) :
+        return overlaps(rt) ? SetOperationResults(InclusiveInterval(min > rt.min ? min : rt.min,
+                                                                    max < rt.max ? max : rt.max)) :
                               SetOperationResults();
     }
     constexpr SetOperationResults operator^(const InclusiveInterval &rt) const
     {
         return min == rt.min ?
-                   (max == rt.max ?
-                        SetOperationResults() :
-                        max < rt.max ?
-                        SetOperationResults(InclusiveInterval(max + 1, rt.max)) :
-                        SetOperationResults(InclusiveInterval(rt.max + 1, max))) :
+                   (max == rt.max ? SetOperationResults() : max < rt.max ?
+                                    SetOperationResults(InclusiveInterval(max + 1, rt.max)) :
+                                    SetOperationResults(InclusiveInterval(rt.max + 1, max))) :
                    min < rt.min ?
                    (max == rt.max ?
                         SetOperationResults(InclusiveInterval(min, rt.min - 1)) :
-                        max < rt.max ?
-                        SetOperationResults(InclusiveInterval(min, rt.min - 1),
-                                            InclusiveInterval(max + 1, rt.max)) :
-                        SetOperationResults(InclusiveInterval(min, rt.min - 1),
-                                            InclusiveInterval(rt.max + 1, max))) :
+                        max < rt.max ? SetOperationResults(InclusiveInterval(min, rt.min - 1),
+                                                           InclusiveInterval(max + 1, rt.max)) :
+                                       SetOperationResults(InclusiveInterval(min, rt.min - 1),
+                                                           InclusiveInterval(rt.max + 1, max))) :
                    (max == rt.max ?
                         SetOperationResults(InclusiveInterval(rt.min, min - 1)) :
-                        max < rt.max ?
-                        SetOperationResults(InclusiveInterval(rt.min, min - 1),
-                                            InclusiveInterval(max + 1, rt.max)) :
-                        SetOperationResults(InclusiveInterval(rt.min, min - 1),
-                                            InclusiveInterval(rt.max + 1, max)));
+                        max < rt.max ? SetOperationResults(InclusiveInterval(rt.min, min - 1),
+                                                           InclusiveInterval(max + 1, rt.max)) :
+                                       SetOperationResults(InclusiveInterval(rt.min, min - 1),
+                                                           InclusiveInterval(rt.max + 1, max)));
     }
     constexpr SetOperationResults operator|(const InclusiveInterval &rt) const
     {
-        return overlaps(rt) ? SetOperationResults(InclusiveInterval(
-                                  min < rt.min ? min : rt.min, max > rt.max ? max : rt.max)) :
-                              min < rt.min ? SetOperationResults(*this, rt) :
-                                             SetOperationResults(rt, *this);
+        return overlaps(rt) ?
+                   SetOperationResults(InclusiveInterval(min < rt.min ? min : rt.min,
+                                                         max > rt.max ? max : rt.max)) :
+                   min < rt.min ? SetOperationResults(*this, rt) : SetOperationResults(rt, *this);
     }
-    static constexpr bool minLess(const InclusiveInterval &a, const InclusiveInterval &b)
+    struct MinLess final
     {
-        return a.min < b.min;
-    }
-    static constexpr bool minGreater(const InclusiveInterval &a, const InclusiveInterval &b)
+        constexpr bool operator()(const InclusiveInterval &a, const InclusiveInterval &b) const
+        {
+            return a.min < b.min;
+        }
+    };
+    struct MinGreater final
     {
-        return a.min > b.min;
-    }
-    static constexpr bool maxLess(const InclusiveInterval &a, const InclusiveInterval &b)
+        constexpr bool operator()(const InclusiveInterval &a, const InclusiveInterval &b) const
+        {
+            return a.min > b.min;
+        }
+    };
+    struct MaxLess final
     {
-        return a.max < b.max;
-    }
-    static constexpr bool maxGreater(const InclusiveInterval &a, const InclusiveInterval &b)
+        constexpr bool operator()(const InclusiveInterval &a, const InclusiveInterval &b) const
+        {
+            return a.max < b.max;
+        }
+    };
+    struct MaxGreater final
     {
-        return a.max > b.max;
-    }
+        constexpr bool operator()(const InclusiveInterval &a, const InclusiveInterval &b) const
+        {
+            return a.max > b.max;
+        }
+    };
 };
 
 #endif /* INTERVAL_H_ */
