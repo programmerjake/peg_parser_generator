@@ -46,6 +46,7 @@ public:
         : indentDepth(0), os(os), indentString(std::move(indentString))
     {
     }
+    static std::string escapeCharacter(char32_t ch);
     virtual void visitEmpty(Empty *node) override;
     virtual void visitGrammar(Grammar *node) override;
     virtual void visitNonterminal(Nonterminal *node) override;
@@ -59,6 +60,7 @@ public:
     virtual void visitOptionalExpression(OptionalExpression *node) override;
     virtual void visitSequence(Sequence *node) override;
     virtual void visitTerminal(Terminal *node) override;
+    virtual void visitCharacterClass(CharacterClass *node) override;
     virtual void visitEOFTerminal(EOFTerminal *node) override;
 };
 }

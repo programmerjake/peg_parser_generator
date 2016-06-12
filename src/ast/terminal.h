@@ -83,8 +83,7 @@ struct CharacterClass final : public Expression
             std::size_t searchStartIndex = getSearchStartIndex(value);
             if(searchStartIndex >= ranges.size())
                 return false;
-            return value >= ranges[searchStartIndex].min
-                   && value <= ranges[searchStartIndex].max;
+            return value >= ranges[searchStartIndex].min && value <= ranges[searchStartIndex].max;
         }
         bool overlaps(const CharacterRange &range) const noexcept
         {
@@ -107,6 +106,17 @@ struct CharacterClass final : public Expression
         }
     };
     CharacterRanges characterRanges;
+    bool inverted;
+    CharacterClass(Location location, CharacterRanges characterRanges, bool inverted)
+        : Expression(std::move(location)),
+          characterRanges(std::move(characterRanges)),
+          inverted(inverted)
+    {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitCharacterClass(this);
+    }
 };
 
 struct EOFTerminal final : public Expression

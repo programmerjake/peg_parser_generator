@@ -39,6 +39,22 @@
 
 struct Parser final
 {
+    static constexpr int eof = -1;
+    static int getDigitValue(int ch, int base = 36)
+    {
+        int retval;
+        if(ch >= '0' && ch <= '9')
+            retval = ch - '0';
+        else if(ch >= 'a' && ch <= 'z')
+            retval = ch - 'a' + 10;
+        else if(ch >= 'A' && ch <= 'Z')
+            retval = ch - 'A' + 10;
+        else
+            return -1;
+        if(retval >= base)
+            return -1;
+        return retval;
+    }
     struct Token final
     {
         enum class Type
@@ -59,6 +75,7 @@ struct Parser final
             String,
             Identifier,
             EOFKeyword,
+            CharacterClass,
         };
         Location location;
         Type type;
@@ -73,7 +90,6 @@ struct Parser final
     };
     struct Tokenizer final
     {
-        static constexpr int eof = -1;
         Location currentLocation;
         int peek;
         Tokenizer(const Source *source)
@@ -190,7 +206,23 @@ struct Parser final
                 std::string value;
                 while(peek != eof && peek != '\"' && peek != '\r' && peek != '\n')
                 {
-                    value += static_cast<char>(get());
+                    if(peek == '\\')
+                    {
+                        value += static_cast<char>(get());
+                        if(peek == eof || peek == '\r' || peek == '\n')
+                        {
+                            errorHandler(
+                                ErrorLevel::FatalError, tokenLocation, "missing closing \"");
+                        }
+                        else
+                        {
+                            value += static_cast<char>(get());
+                        }
+                    }
+                    else
+                    {
+                        value += static_cast<char>(get());
+                    }
                 }
                 if(peek != '\"')
                 {
@@ -201,6 +233,42 @@ struct Parser final
                     get();
                 }
                 return Token(std::move(tokenLocation), Token::Type::String, std::move(value));
+            }
+            case '[':
+            {
+                get();
+                tokenLocation = currentLocation;
+                std::string value;
+                while(peek != eof && peek != ']' && peek != '\r' && peek != '\n')
+                {
+                    if(peek == '\\')
+                    {
+                        value += static_cast<char>(get());
+                        if(peek == eof || peek == '\r' || peek == '\n')
+                        {
+                            errorHandler(
+                                ErrorLevel::FatalError, tokenLocation, "missing closing ]");
+                        }
+                        else
+                        {
+                            value += static_cast<char>(get());
+                        }
+                    }
+                    else
+                    {
+                        value += static_cast<char>(get());
+                    }
+                }
+                if(peek != ']')
+                {
+                    errorHandler(ErrorLevel::FatalError, tokenLocation, "missing closing ]");
+                }
+                else
+                {
+                    get();
+                }
+                return Token(
+                    std::move(tokenLocation), Token::Type::CharacterClass, std::move(value));
             }
             case ';':
             {
@@ -293,6 +361,234 @@ struct Parser final
     {
         token = tokenizer.parseToken(errorHandler);
     }
+    enum class CharacterLocation
+    {
+        String,
+        CharacterClass
+    };
+    char32_t parseCharacterValue(std::size_t &position, CharacterLocation characterLocation)
+    {
+        int peek;
+        if(position >= token.value.size())
+            peek = eof;
+        else
+            peek = token.value[position];
+        auto get = [&]() -> int
+        {
+            int retval = peek;
+            position++;
+            if(position >= token.value.size())
+                peek = eof;
+            else
+                peek = token.value[position];
+            return retval;
+        };
+        if(peek == '\\')
+        {
+            get();
+            switch(peek)
+            {
+            case 'f':
+                get();
+                return '\f';
+            case 'n':
+                get();
+                return '\n';
+            case 'r':
+                get();
+                return '\r';
+            case 't':
+                get();
+                return '\t';
+            case ']':
+            case '-':
+                if(characterLocation != CharacterLocation::CharacterClass)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError,
+                        Location(token.location.source, token.location.position + position),
+                        "invalid escape sequence");
+                }
+                return get();
+            case '\\':
+            case '\'':
+            case '\"':
+                return get();
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+            {
+                char32_t retval = 0;
+                for(int i = 0; i < 3; i++)
+                {
+                    int digit = getDigitValue(peek, 0x10);
+                    if(digit < 0)
+                    {
+                        break;
+                    }
+                    get();
+                    retval = retval * 0x10 + digit;
+                }
+                return retval;
+            }
+            case 'x':
+            {
+                get();
+                if(getDigitValue(peek, 0x10) < 0)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError,
+                        Location(token.location.source, token.location.position + position),
+                        "invalid escape sequence");
+                }
+                char32_t retval = 0;
+                while(true)
+                {
+                    int digit = getDigitValue(peek, 0x10);
+                    if(digit < 0)
+                    {
+                        break;
+                    }
+                    get();
+                    retval = retval * 0x10 + digit;
+                    if(retval >= 0x10FFFFUL)
+                    {
+                        errorHandler(
+                            ErrorLevel::FatalError,
+                            Location(token.location.source, token.location.position + position),
+                            "invalid escape sequence");
+                    }
+                }
+                return retval;
+            }
+            case 'u':
+            {
+                get();
+                char32_t retval = 0;
+                for(int i = 0; i < 4; i++)
+                {
+                    int digit = getDigitValue(peek, 0x10);
+                    if(digit < 0)
+                    {
+                        errorHandler(
+                            ErrorLevel::FatalError,
+                            Location(token.location.source, token.location.position + position),
+                            "invalid escape sequence");
+                    }
+                    get();
+                    retval = retval * 0x10 + digit;
+                }
+                return retval;
+            }
+            case 'U':
+            {
+                get();
+                char32_t retval = 0;
+                for(int i = 0; i < 8; i++)
+                {
+                    int digit = getDigitValue(peek, 0x10);
+                    if(digit < 0)
+                    {
+                        errorHandler(
+                            ErrorLevel::FatalError,
+                            Location(token.location.source, token.location.position + position),
+                            "invalid escape sequence");
+                    }
+                    get();
+                    retval = retval * 0x10 + digit;
+                }
+                if(retval >= 0x10FFFFUL)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError,
+                        Location(token.location.source, token.location.position + position),
+                        "invalid escape sequence");
+                }
+                return retval;
+            }
+            default:
+                errorHandler(ErrorLevel::FatalError,
+                             Location(token.location.source, token.location.position + position),
+                             "invalid escape sequence");
+                return get();
+            }
+        }
+        if((peek >= 0x7F || peek < 0x20) && peek != '\t')
+        {
+            errorHandler(ErrorLevel::FatalError,
+                         Location(token.location.source, token.location.position + position),
+                         "invalid character");
+        }
+        return get();
+    }
+    void parseCharacterClass(ast::CharacterClass::CharacterRanges &characterRanges, bool &inverted)
+    {
+        std::size_t position = 0;
+        int peek = token.value.empty() ? eof : token.value[0];
+        auto get = [&]() -> int
+        {
+            int retval = peek;
+            position++;
+            if(position >= token.value.size())
+                peek = eof;
+            else
+                peek = token.value[position];
+            return retval;
+        };
+        auto getCharacterValue = [&]() -> char32_t
+        {
+            auto retval = parseCharacterValue(position, CharacterLocation::CharacterClass);
+            if(position >= token.value.size())
+                peek = eof;
+            else
+                peek = token.value[position];
+            return retval;
+        };
+        if(peek == '^')
+        {
+            get();
+            inverted = true;
+        }
+        while(peek != eof)
+        {
+            auto rangeLocation =
+                Location(token.location.source, token.location.position + position);
+            ast::CharacterClass::CharacterRange range(getCharacterValue());
+            if(peek == '-')
+            {
+                rangeLocation = Location(token.location.source, token.location.position + position);
+                get();
+                range.max = getCharacterValue();
+                if(range.empty())
+                {
+                    errorHandler(ErrorLevel::FatalError,
+                                 rangeLocation,
+                                 "invalid character range: start character has a larger value than "
+                                 "end character");
+                    continue;
+                }
+                if(!characterRanges.insert(range))
+                {
+                    errorHandler(ErrorLevel::FatalError,
+                                 rangeLocation,
+                                 "invalid character range: overlaps other entries");
+                }
+            }
+            else if(!characterRanges.insert(range))
+            {
+                errorHandler(ErrorLevel::FatalError,
+                             rangeLocation,
+                             "invalid character: overlaps other entries");
+            }
+        }
+    }
     ast::Expression *parsePrimaryExpression()
     {
         switch(token.type)
@@ -331,8 +627,10 @@ struct Parser final
         case Token::Type::String:
         {
             ast::Expression *retval = nullptr;
-            for(unsigned char ch : token.value)
+            std::size_t position = 0;
+            while(position < token.value.size())
             {
+                auto ch = parseCharacterValue(position, CharacterLocation::String);
                 auto terminal = arena.make<ast::Terminal>(token.location, ch);
                 if(retval)
                 {
@@ -347,6 +645,16 @@ struct Parser final
             {
                 retval = arena.make<ast::Empty>(token.location);
             }
+            next();
+            return retval;
+        }
+        case Token::Type::CharacterClass:
+        {
+            ast::CharacterClass::CharacterRanges characterRanges;
+            bool inverted = false;
+            parseCharacterClass(characterRanges, inverted);
+            auto retval = arena.make<ast::CharacterClass>(
+                token.location, std::move(characterRanges), inverted);
             next();
             return retval;
         }
@@ -422,6 +730,7 @@ struct Parser final
             case Token::Type::String:
             case Token::Type::Identifier:
             case Token::Type::EOFKeyword:
+            case Token::Type::CharacterClass:
                 break;
             }
             if(done)

@@ -37,6 +37,7 @@ struct GreedyPositiveRepetition;
 struct OptionalExpression;
 struct Sequence;
 struct Terminal;
+struct CharacterClass;
 struct EOFTerminal;
 struct Visitor
 {
@@ -54,6 +55,7 @@ struct Visitor
     virtual void visitOptionalExpression(OptionalExpression *node) = 0;
     virtual void visitSequence(Sequence *node) = 0;
     virtual void visitTerminal(Terminal *node) = 0;
+    virtual void visitCharacterClass(CharacterClass *node) = 0;
     virtual void visitEOFTerminal(EOFTerminal *node) = 0;
 };
 }

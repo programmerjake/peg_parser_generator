@@ -21,46 +21,53 @@
 
 // this is an example grammar based off of ecmascript
 
-digit = "0"
-      / "1";
+digit = [0-9];
 
-letter = "a" 
-       / "b" 
-       / "c";
+letter = [a-zA-Z];
+
+wsChar = [ \t\r\n];
+
+lineComment = "//" [^\r\n]*;
+
+blockComment = "/*" ([^/*] / "*"+[^/])* "*/";
+
+ws = (wsChar / lineComment / blockComment)*;
 
 identifierStart = letter / "_";
 
 identifierContinue = identifierStart / digit;
 
-newKeyword = "new" !identifierContinue;
+newKeyword = "new" !identifierContinue ws;
 
-voidKeyword = "void" !identifierContinue;
+voidKeyword = "void" !identifierContinue ws;
 
 keyword = newKeyword
         / voidKeyword;
 
-identifierName = identifierStart identifierContinue*;
+identifierName = identifierStart identifierContinue* ws;
 
 identifier = !keyword identifierName;
 
-number = digit+ ("." digit*)? (("e" / "E") ("+" / "-")? digit+)?
-       / "." digit+ (("e" / "E") ("+" / "-")? digit+)?;
+number = digit+ ("." digit*)? (("e" / "E") ("+" / "-")? digit+)? ws
+       / "." digit+ (("e" / "E") ("+" / "-")? digit+)? ws;
 
-expression = additiveExpression ("," additiveExpression)*;
+expression = additiveExpression ("," ws additiveExpression)*;
 
-additiveExpression = multiplicativeExpression (("+" / "-") multiplicativeExpression)*;
+additiveExpression = multiplicativeExpression (("+" / "-") ws multiplicativeExpression)*;
 
-multiplicativeExpression = unaryExpression (("*" / "/" / "%") unaryExpression)*;
+multiplicativeExpression = unaryExpression (("*" / "/" / "%") ws unaryExpression)*;
 
-unaryExpression = "+" unaryExpression
-                / "-" unaryExpression
+unaryExpression = "+" ws unaryExpression
+                / "-" ws unaryExpression
                 / newExpression;
 
 newExpression = newKeyword newExpression
               / memberExpression;
 
-memberExpression = primaryExpression ("." identifier)*;
+memberExpression = primaryExpression ("." ws identifier)*;
  
-primaryExpression = "(" expression ")"
+primaryExpression = "(" ws expression ")" ws
                   / identifier
                   / number;
+
+goal = ws (expression ";" ws)*;

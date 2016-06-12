@@ -27,7 +27,7 @@
 #include "repetition.h"
 #include "sequence.h"
 #include "terminal.h"
-#include <ostream>
+#include <sstream>
 #include <cassert>
 
 namespace ast
@@ -36,6 +36,57 @@ void DumpVisitor::indent()
 {
     for(std::size_t i = 0; i < indentDepth; i++)
         os << indentString;
+}
+
+std::string DumpVisitor::escapeCharacter(char32_t ch)
+{
+    switch(ch)
+    {
+    case '\\':
+    case '\'':
+    case '\"':
+    case '?':
+        return std::string("\\") + static_cast<char>(ch);
+    case '\n':
+        return "\\n";
+    case '\r':
+        return "\\r";
+    case '\t':
+        return "\\t";
+    case '\0':
+        return "\\000";
+    default:
+        if(ch < 0x20 || ch >= 0x7F)
+        {
+            std::ostringstream ss;
+            ss.fill('0');
+            if(ch >= 0x80)
+            {
+                ss << std::uppercase << std::hex;
+                if(ch > 0xFFFFU)
+                {
+                    ss << "\\U";
+                    ss.width(8);
+                    ss << ch;
+                }
+                else
+                {
+                    ss << "\\u";
+                    ss.width(4);
+                    ss << ch;
+                }
+            }
+            else
+            {
+                ss << std::oct;
+                ss << "\\";
+                ss.width(3);
+                ss << ch;
+            }
+            return ss.str();
+        }
+        return std::string(1, static_cast<char>(ch));
+    }
 }
 
 void DumpVisitor::visitEmpty(Empty *node)
@@ -147,7 +198,31 @@ void DumpVisitor::visitSequence(Sequence *node)
 void DumpVisitor::visitTerminal(Terminal *node)
 {
     indent();
-    os << "Terminal value = '" << static_cast<char>(node->value) << "'" << std::endl;
+    os << "Terminal value = '" << escapeCharacter(node->value) << "' ("
+       << static_cast<unsigned long>(node->value) << ")" << std::endl;
+}
+
+void DumpVisitor::visitCharacterClass(CharacterClass *node)
+{
+    indent();
+    os << "CharacterClass inverted = " << (node->inverted ? "true" : "false") << std::endl;
+    indentDepth++;
+    for(const auto &range : node->characterRanges.ranges)
+    {
+        indent();
+        if(range.min == range.max)
+        {
+            os << "'" << escapeCharacter(range.min) << "' ("
+               << static_cast<unsigned long>(range.min) << ")" << std::endl;
+        }
+        else
+        {
+            os << "'" << escapeCharacter(range.min) << "' ("
+               << static_cast<unsigned long>(range.min) << ") to '" << escapeCharacter(range.max)
+               << "' (" << static_cast<unsigned long>(range.max) << ")" << std::endl;
+        }
+    }
+    indentDepth--;
 }
 
 void DumpVisitor::visitEOFTerminal(EOFTerminal *node)
