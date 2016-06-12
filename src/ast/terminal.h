@@ -24,8 +24,9 @@
 
 #include "expression.h"
 #include "visitor.h"
-#include "../interval_set.h"
 #include <utility>
+#include <vector>
+#include <algorithm>
 
 namespace ast
 {
@@ -43,12 +44,69 @@ struct Terminal final : public Expression
 
 struct CharacterClass final : public Expression
 {
-#if 0
-    IntervalSet<char32_t> characterSet;
-#error finish
-#else
-#warning finish
-#endif
+    struct CharacterRange final
+    {
+        char32_t min, max;
+        constexpr CharacterRange(char32_t min, char32_t max) : min(min), max(max)
+        {
+        }
+        explicit constexpr CharacterRange(char32_t value) : min(value), max(value)
+        {
+        }
+        constexpr CharacterRange() : min(U'1'), max(U'0')
+        {
+        }
+        constexpr bool empty() const
+        {
+            return max < min;
+        }
+        constexpr bool overlaps(const CharacterRange &rt) const
+        {
+            return min <= rt.max && max >= rt.min;
+        }
+    };
+    struct CharacterRanges final
+    {
+        std::vector<CharacterRange> ranges;
+        std::size_t getSearchStartIndex(char32_t value) const noexcept
+        {
+            return std::lower_bound(ranges.begin(),
+                                    ranges.end(),
+                                    value,
+                                    [](const CharacterRange &a, char32_t b)
+                                    {
+                                        return a.min < b;
+                                    }) - ranges.begin();
+        }
+        bool contains(char32_t value) const noexcept
+        {
+            std::size_t searchStartIndex = getSearchStartIndex(value);
+            if(searchStartIndex >= ranges.size())
+                return false;
+            return value >= ranges[searchStartIndex].min
+                   && value <= ranges[searchStartIndex].max;
+        }
+        bool overlaps(const CharacterRange &range) const noexcept
+        {
+            if(range.empty())
+                return false;
+            std::size_t searchStartIndex = getSearchStartIndex(range.min);
+            if(searchStartIndex >= ranges.size())
+                return false;
+            return ranges[searchStartIndex].overlaps(range);
+        }
+        bool insert(const CharacterRange &range)
+        {
+            if(range.empty())
+                return false;
+            std::size_t searchStartIndex = getSearchStartIndex(range.min);
+            if(searchStartIndex < ranges.size() && ranges[searchStartIndex].overlaps(range))
+                return false;
+            ranges.insert(ranges.begin() + searchStartIndex, range);
+            return true;
+        }
+    };
+    CharacterRanges characterRanges;
 };
 
 struct EOFTerminal final : public Expression
