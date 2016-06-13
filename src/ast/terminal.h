@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <cstdint>
 
 namespace ast
 {
@@ -104,6 +105,243 @@ struct CharacterClass final : public Expression
             ranges.insert(ranges.begin() + searchStartIndex, range);
             return true;
         }
+        template <typename Classifier>
+        bool matchesClassifier(Classifier &&classifier) const
+        {
+            std::uint_fast32_t characterCount = 0;
+            for(const auto &range : ranges)
+            {
+                // check max separately in case max is the maximum value for this type
+                for(std::uint_fast32_t ch = range.min; ch < range.max; ch++)
+                {
+                    if(!classifier.matches(static_cast<char32_t>(ch)))
+                        return false;
+                    characterCount++;
+                }
+                // check max separately in case max is the maximum value for this type
+                if(!classifier.matches(static_cast<char32_t>(range.max)))
+                    return false;
+                characterCount++;
+            }
+            if(characterCount == classifier.totalCharacterCount)
+                return true;
+            return false;
+        }
+        template <typename Classifier>
+        bool containsClassifier(Classifier &&classifier) const
+        {
+            for(const auto &range : ranges)
+            {
+                // check max separately in case max is the maximum value for this type
+                for(std::uint_fast32_t ch = range.min; ch < range.max; ch++)
+                {
+                    if(!classifier.matches(static_cast<char32_t>(ch)))
+                        return false;
+                }
+                // check max separately in case max is the maximum value for this type
+                if(!classifier.matches(static_cast<char32_t>(range.max)))
+                    return false;
+            }
+            return true;
+        }
+        template <typename Classifier>
+        bool excludesClassifier(Classifier &&classifier) const
+        {
+            for(const auto &range : ranges)
+            {
+                // check max separately in case max is the maximum value for this type
+                for(std::uint_fast32_t ch = range.min; ch < range.max; ch++)
+                {
+                    if(classifier.matches(static_cast<char32_t>(ch)))
+                        return false;
+                }
+                // check max separately in case max is the maximum value for this type
+                if(classifier.matches(static_cast<char32_t>(range.max)))
+                    return false;
+            }
+            return true;
+        }
+        struct OctalDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 8;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch >= '0' && ch <= '7';
+            }
+        };
+        struct DecimalDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch >= '0' && ch <= '9';
+            }
+        };
+        struct UppercaseHexDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10 + 6;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F');
+            }
+        };
+        struct LowercaseHexDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10 + 6;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+            }
+        };
+        struct HexDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10 + 6 + 6;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')
+                       || (ch >= 'A' && ch <= 'F');
+            }
+        };
+        struct UppercaseLetterClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch >= 'A' && ch <= 'Z';
+            }
+        };
+        struct LowercaseLetterClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch >= 'a' && ch <= 'z';
+            }
+        };
+        struct LetterClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+            }
+        };
+        struct LetterOrDigitClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26 + 10;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                       || (ch >= '0' && ch <= '9');
+            }
+        };
+        struct DigitOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= '0' && ch <= '9') || ch == '_';
+            }
+        };
+        struct UppercaseLetterOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'A' && ch <= 'Z') || ch == '_';
+            }
+        };
+        struct LowercaseLetterOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || ch == '_';
+            }
+        };
+        struct LetterOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
+            }
+        };
+        struct LetterDigitOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26 + 10 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                       || (ch >= '0' && ch <= '9') || ch == '_';
+            }
+        };
+        struct DigitDollarOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 10 + 1 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= '0' && ch <= '9') || ch == '$' || ch == '_';
+            }
+        };
+        struct UppercaseLetterDollarOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 1 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'A' && ch <= 'Z') || ch == '_' || ch == '$';
+            }
+        };
+        struct LowercaseLetterDollarOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 1 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '$';
+            }
+        };
+        struct LetterDollarOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26 + 1 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
+                       || ch == '$';
+            }
+        };
+        struct LetterDigitDollarOrUnderlineClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 26 + 26 + 10 + 1 + 1;
+            static constexpr bool matches(char32_t ch)
+            {
+                return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                       || (ch >= '0' && ch <= '9') || ch == '_' || ch == '$';
+            }
+        };
+        struct SpaceOrTabClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 2;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch == ' ' || ch == '\t';
+            }
+        };
+        struct SpaceTabOrLineEndingClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 4;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+            }
+        };
+        struct LineEndingClassifier final
+        {
+            static constexpr unsigned totalCharacterCount = 2;
+            static constexpr bool matches(char32_t ch)
+            {
+                return ch == '\r' || ch == '\n';
+            }
+        };
     };
     CharacterRanges characterRanges;
     bool inverted;

@@ -565,6 +565,22 @@ struct Parser final
             {
                 rangeLocation = Location(token.location.source, token.location.position + position);
                 get();
+                if(peek == eof)
+                {
+                    if(!characterRanges.insert(range))
+                    {
+                        errorHandler(ErrorLevel::FatalError,
+                                     rangeLocation,
+                                     "invalid character: overlaps other entries");
+                    }
+                    if(!characterRanges.insert(ast::CharacterClass::CharacterRange(U'-')))
+                    {
+                        errorHandler(ErrorLevel::FatalError,
+                                     rangeLocation,
+                                     "invalid character: overlaps other entries");
+                    }
+                    break;
+                }
                 range.max = getCharacterValue();
                 if(range.empty())
                 {

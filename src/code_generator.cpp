@@ -59,6 +59,12 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     {
         return ast::DumpVisitor::escapeCharacter(ch);
     }
+    static std::string escapeCharForCharacterClass(char32_t ch)
+    {
+        if(ch == '-' || ch == '^' || ch == ']')
+            return std::string("\\") + static_cast<char>(ch);
+        return ast::DumpVisitor::escapeCharacter(ch);
+    }
     static std::string getCharName(char32_t ch)
     {
         switch(ch)
@@ -81,6 +87,186 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
             }
             return std::string(1, static_cast<char>(ch));
         }
+    }
+    static std::string getCharacterClassMatchFailMessage(const ast::CharacterClass *characterClass)
+    {
+        std::ostringstream ss;
+        if(!characterClass->inverted)
+            ss << "missing ";
+        if(characterClass->characterRanges.matchesClassifier(
+               ast::CharacterClass::CharacterRanges::DecimalDigitClassifier()))
+        {
+            ss << "decimal digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::OctalDigitClassifier()))
+        {
+            ss << "octal digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::HexDigitClassifier()))
+        {
+            ss << "hexadecimal digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LowercaseHexDigitClassifier()))
+        {
+            ss << "lowercase hexadecimal digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::UppercaseHexDigitClassifier()))
+        {
+            ss << "uppercase hexadecimal digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterClassifier()))
+        {
+            ss << "letter";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LowercaseLetterClassifier()))
+        {
+            ss << "lowercase letter";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::UppercaseLetterClassifier()))
+        {
+            ss << "uppercase letter";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterOrDigitClassifier()))
+        {
+            ss << "letter or digit";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::UppercaseLetterOrUnderlineClassifier()))
+        {
+            ss << "uppercase letter or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LowercaseLetterOrUnderlineClassifier()))
+        {
+            ss << "lowercase letter or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterOrUnderlineClassifier()))
+        {
+            ss << "letter or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::DigitOrUnderlineClassifier()))
+        {
+            ss << "digit or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterDigitOrUnderlineClassifier()))
+        {
+            ss << "letter, digit, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::
+                        UppercaseLetterDollarOrUnderlineClassifier()))
+        {
+            ss << "uppercase letter, $, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::
+                        LowercaseLetterDollarOrUnderlineClassifier()))
+        {
+            ss << "lowercase letter, $, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterDollarOrUnderlineClassifier()))
+        {
+            ss << "letter, $, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LetterDigitDollarOrUnderlineClassifier()))
+        {
+            ss << "letter, digit, $, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::DigitDollarOrUnderlineClassifier()))
+        {
+            ss << "digit, $, or _";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::SpaceOrTabClassifier()))
+        {
+            ss << "space or tab";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::SpaceTabOrLineEndingClassifier()))
+        {
+            ss << "space, tab, or line ending";
+        }
+        else if(characterClass->characterRanges.matchesClassifier(
+                    ast::CharacterClass::CharacterRanges::LineEndingClassifier()))
+        {
+            ss << "line ending";
+        }
+        else
+        {
+            std::uint_fast32_t totalCharCount = 0;
+            const std::size_t firstCharsSize = 5;
+            char32_t firstChars[firstCharsSize];
+            std::size_t firstCharsUsed = 0;
+            for(const auto &range : characterClass->characterRanges.ranges)
+            {
+                assert(!range.empty());
+                totalCharCount += range.max - range.min + 1;
+                for(std::uint_fast32_t i = range.min; i <= range.max; i++)
+                {
+                    if(firstCharsUsed < firstCharsSize)
+                    {
+                        firstChars[firstCharsUsed++] = i;
+                    }
+                }
+            }
+            if(totalCharCount == 1)
+            {
+                assert(firstCharsUsed == 1);
+                ss << getCharName(firstChars[0]);
+            }
+            else if(totalCharCount == 2)
+            {
+                assert(firstCharsUsed == 2);
+                ss << getCharName(firstChars[0]) << " or " << getCharName(firstChars[1]);
+            }
+            else if(totalCharCount > 1 && totalCharCount <= firstCharsSize)
+            {
+                assert(firstCharsUsed == totalCharCount);
+                ss << getCharName(firstChars[0]);
+                for(std::size_t i = 1; i < totalCharCount; i++)
+                {
+                    ss << ", ";
+                    if(i + 1 == totalCharCount)
+                        ss << "or ";
+                    ss << getCharName(firstChars[i]);
+                }
+            }
+            else
+            {
+                ss << "[";
+                for(const auto &range : characterClass->characterRanges.ranges)
+                {
+                    if(range.min == range.max)
+                    {
+                        ss << escapeCharForCharacterClass(range.min);
+                    }
+                    else
+                    {
+                        ss <<escapeCharForCharacterClass(range.min);
+                        ss <<'-';
+                        ss << escapeCharForCharacterClass(range.max);
+                    }
+                }
+                ss << "]";
+            }
+        }
+        if(characterClass->inverted)
+            ss << " not allowed here";
+        return ss.str();
     }
     static std::string escapeString(const std::string &str)
     {
@@ -254,64 +440,30 @@ private:
     struct RuleResult final
     {
         std::size_t location;
-        std::size_t inputStartLocation;
-        std::size_t inputEndLocation;
-        const char *message;
+        std::size_t endLocation;
+        bool isSuccess;
         constexpr RuleResult() noexcept : location(std::string::npos),
-        ``````````````````````````````````inputStartLocation(std::string::npos),
-        ``````````````````````````````````inputEndLocation(std::string::npos),
-        ``````````````````````````````````message(nullptr)
+        ``````````````````````````````````endLocation(0),
+        ``````````````````````````````````isSuccess(false)
         {
         }
-        constexpr RuleResult(std::size_t location,
-        `````````````````````std::size_t inputStartLocation,
-        `````````````````````std::size_t inputEndLocation,
-        `````````````````````const char *message) noexcept : location(location),
-        `````````````````````````````````````````````````````inputStartLocation(inputStartLocation),
-        `````````````````````````````````````````````````````inputEndLocation(inputEndLocation),
-        `````````````````````````````````````````````````````message(message)
+        constexpr RuleResult(std::size_t location, std::size_t endLocation, bool success) noexcept
+            : location(location),
+            ``endLocation(endLocation),
+            ``isSuccess(success)
         {
         }
         constexpr bool empty() const
         {
-            return inputEndLocation == std::string::npos;
+            return location == std::string::npos;
         }
         constexpr bool success() const
         {
-            return !empty() && message == nullptr;
+            return !empty() && isSuccess;
         }
         constexpr bool fail() const
         {
-            return !empty() && message != nullptr;
-        }
-        static constexpr RuleResult makeSuccess(std::size_t inputStartLocation,
-        ````````````````````````````````````````std::size_t inputEndLocation)
-        {
-            return RuleResult(inputEndLocation, inputStartLocation, inputEndLocation, nullptr);
-        }
-        static constexpr RuleResult makeSuccess(std::size_t location,
-        ````````````````````````````````````````std::size_t inputStartLocation,
-        ````````````````````````````````````````std::size_t inputEndLocation)
-        {
-            return RuleResult(location, inputStartLocation, inputEndLocation, nullptr);
-        }
-        static constexpr RuleResult makeFail(std::size_t inputStartLocation,
-        `````````````````````````````````````std::size_t inputEndLocation,
-        `````````````````````````````````````const char *message)
-        {
-            return RuleResult(inputStartLocation, inputStartLocation, inputEndLocation, message);
-        }
-        static constexpr RuleResult makeFail(std::size_t location,
-        `````````````````````````````````````std::size_t inputStartLocation,
-        `````````````````````````````````````std::size_t inputEndLocation,
-        `````````````````````````````````````const char *message)
-        {
-            return RuleResult(location, inputStartLocation, inputEndLocation, message);
-        }
-        constexpr RuleResult makeInverse(const char *failureMessage) const
-        {
-            return fail() ? makeSuccess(inputStartLocation, inputStartLocation, inputEndLocation) :
-            ````````````````makeFail(inputStartLocation, inputEndLocation, failureMessage);
+            return !empty() && !isSuccess;
         }
     };
     struct Results final
@@ -344,10 +496,6 @@ public:
             : runtime_error(makeWhatString(location, message)), location(location), message(message)
         {
         }
-        ParseError(const RuleResult &ruleResult)
-            : ParseError(ruleResult.location, ruleResult.message)
-        {
-        }
     };
 
 private:
@@ -356,6 +504,9 @@ private:
     Results eofResults;
     const std::shared_ptr<const char32_t> source;
     const std::size_t sourceSize;
+    std::size_t errorLocation = 0;
+    std::size_t errorInputEndLocation = 0;
+    const char *errorMessage = "no error";
 
 private:
     Results &getResults(std::size_t position)
@@ -372,6 +523,33 @@ private:
             resultsPointer = &resultsChunks.back().values[resultsChunks.back().used++];
         }
         return *resultsPointer;
+    }
+    RuleResult makeFail(std::size_t location,
+    ````````````````````std::size_t inputEndLocation,
+    ````````````````````const char *message,
+    ````````````````````bool isRequiredForSuccess)
+    {
+        if(isRequiredForSuccess && errorInputEndLocation <= inputEndLocation)
+        {
+            errorLocation = location;
+            errorInputEndLocation = inputEndLocation;
+            errorMessage = message;
+        }
+        return RuleResult(location, inputEndLocation, false);
+    }
+    RuleResult makeFail(std::size_t inputEndLocation,
+    ````````````````````const char *message,
+    ````````````````````bool isRequiredForSuccess)
+    {
+        return makeFail(inputEndLocation, inputEndLocation, message, isRequiredForSuccess);
+    }
+    static constexpr RuleResult makeSuccess(std::size_t location, std::size_t inputEndLocation)
+    {
+        return RuleResult(location, inputEndLocation, true);
+    }
+    static constexpr RuleResult makeSuccess(std::size_t inputEndLocation)
+    {
+        return RuleResult(inputEndLocation, inputEndLocation, true);
     }
     static std::pair<std::shared_ptr<const char32_t>, std::size_t> makeSource(
         std::u32string source);
@@ -505,21 +683,22 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
             sourceFile << R"(
 void Parser::)" << translateName(nonterminal->name) << R"(()
 {
-    auto result = )" << translateName(nonterminal->name, currentPartNumber) << R"((0);
+    auto result = )" << translateName(nonterminal->name, currentPartNumber) << R"((0, true);
     if(result.fail())
-        throw ParseError(result);
+        throw ParseError(errorLocation, errorMessage);
 }
 )";
             headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                       << "(std::size_t startLocation);\n";
+                       << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
             sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                       << R"((std::size_t startLocation)
+                       << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     RuleResult &retval = getResults(startLocation).)" << translateName(nonterminal->name) << R"(;
     if(!retval.empty())
         return retval;
-    retval = )" << translateName(nonterminal->name, nextPartNumber) << R"((startLocation);
+    retval = )" << translateName(nonterminal->name, nextPartNumber)
+                       << R"((startLocation, isRequiredForSuccess);
     return retval;
 }
 )";
@@ -541,12 +720,12 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     virtual void visitEmpty(ast::Empty *node) override
     {
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
-    return RuleResult::makeSuccess(startLocation, startLocation);
+    return makeSuccess(startLocation);
 }
 )";
     }
@@ -561,12 +740,12 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     virtual void visitNonterminalExpression(ast::NonterminalExpression *node) override
     {
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
-    return )" << translateName(node->value->name, 0) << R"((startLocation);
+    return )" << translateName(node->value->name, 0) << R"((startLocation, isRequiredForSuccess);
 }
 )";
     }
@@ -575,21 +754,21 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
         auto firstPartNumber = nextPartNumber++;
         auto secondPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto firstResult = )" << translateName(nonterminal->name, firstPartNumber)
-                   << R"((startLocation);
+                   << R"((startLocation, isRequiredForSuccess);
     if(firstResult.success())
         return firstResult;
     auto secondResult = )" << translateName(nonterminal->name, secondPartNumber)
-                   << R"((startLocation);
-    if(secondResult.success())
+                   << R"((startLocation, isRequiredForSuccess);
+    if(secondResult.fail())
         return secondResult;
-    if(firstResult.inputEndLocation >= secondResult.inputEndLocation)
-        return firstResult;
+    if(firstResult.endLocation >= secondResult.endLocation)
+        secondResult.endLocation = firstResult.endLocation;
     return secondResult;
 }
 )";
@@ -602,13 +781,13 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     {
         auto expressionPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation);
+                   << R"((startLocation, isRequiredForSuccess);
     if(expressionResult.fail())
         return expressionResult;
     expressionResult.location = startLocation;
@@ -622,14 +801,16 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     {
         auto expressionPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation);
-    return expressionResult.makeInverse("not allowed here");
+                   << R"((startLocation, !isRequiredForSuccess);
+    if(expressionResult.fail())
+        return makeSuccess(startLocation);
+    return makeFail(startLocation, "not allowed here", isRequiredForSuccess);
 }
 )";
         currentPartNumber = expressionPartNumber;
@@ -643,20 +824,22 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     {
         auto expressionPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
-    auto retval = RuleResult::makeSuccess(startLocation, startLocation);
+    auto retval = makeSuccess(startLocation);
     while(true)
     {
         auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((retval.location);
+                   << R"((retval.location, isRequiredForSuccess);
         if(expressionResult.fail())
+        {
+            retval = makeSuccess(retval.location, expressionResult.endLocation);
             break;
-        retval = RuleResult::makeSuccess(
-            expressionResult.location, startLocation, expressionResult.inputEndLocation);
+        }
+        retval = makeSuccess(expressionResult.location, expressionResult.endLocation);
     }
     return retval;
 }
@@ -668,23 +851,25 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     {
         auto expressionPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto retval = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation);
+                   << R"((startLocation, isRequiredForSuccess);
     if(retval.fail())
         return retval;
     while(true)
     {
         auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((retval.location);
+                   << R"((retval.location, isRequiredForSuccess);
         if(expressionResult.fail())
+        {
+            retval = makeSuccess(retval.location, expressionResult.endLocation);
             break;
-        retval = RuleResult::makeSuccess(
-            expressionResult.location, startLocation, expressionResult.inputEndLocation);
+        }
+        retval = makeSuccess(expressionResult.location, expressionResult.endLocation);
     }
     return retval;
 }
@@ -696,15 +881,15 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     {
         auto expressionPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto retval = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation);
+                   << R"((startLocation, isRequiredForSuccess);
     if(retval.fail())
-        return RuleResult::makeSuccess(startLocation, startLocation);
+        return makeSuccess(startLocation);
     return retval;
 }
 )";
@@ -716,16 +901,17 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
         auto firstPartNumber = nextPartNumber++;
         auto secondPartNumber = nextPartNumber++;
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     auto firstResult = )" << translateName(nonterminal->name, firstPartNumber)
-                   << R"((startLocation);
+                   << R"((startLocation, isRequiredForSuccess);
     if(firstResult.fail())
         return firstResult;
-    return )" << translateName(nonterminal->name, secondPartNumber) << R"((firstResult.location);
+    return )" << translateName(nonterminal->name, secondPartNumber)
+                   << R"((firstResult.location, isRequiredForSuccess);
 }
 )";
         currentPartNumber = firstPartNumber;
@@ -736,36 +922,37 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     virtual void visitTerminal(ast::Terminal *node) override
     {
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     if(startLocation >= sourceSize)
     {
-        return RuleResult::makeFail(startLocation, startLocation, "missing )"
-                   << escapeString(getCharName(node->value)) << R"(");
+        return makeFail(startLocation, "missing )" << escapeString(getCharName(node->value))
+                   << R"(", isRequiredForSuccess);
     }
-    if(source[startLocation] == U')" << escapeChar(node->value) << R"(')
+    if(source.get()[startLocation] == U')" << escapeChar(node->value) << R"(')
     {
-        return RuleResult::makeSuccess(startLocation + 1, startLocation, startLocation + 1);
+        return makeSuccess(startLocation + 1, startLocation + 1);
     }
-    return RuleResult::makeFail(startLocation, startLocation, "missing )"
-                   << escapeString(getCharName(node->value)) << R"(");
+    return makeFail(startLocation, startLocation + 1, "missing )"
+                   << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess);
 }
 )";
     }
     virtual void visitCharacterClass(ast::CharacterClass *node) override
     {
+        std::string matchFailMessage = getCharacterClassMatchFailMessage(node);
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     if(startLocation >= sourceSize)
     {
-        return RuleResult::makeFail(startLocation, startLocation, "missing character");
+        return makeFail(startLocation, "unexpected end of input", isRequiredForSuccess);
     }
     bool matches = false;
 )";
@@ -774,7 +961,7 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
         {
             if(range.min == range.max)
             {
-                sourceFile << R"(    )" << elseString << R"(if(source[startLocation] == U')"
+                sourceFile << R"(    )" << elseString << R"(if(source.get()[startLocation] == U')"
                            << escapeChar(range.min) << R"(')
     {
         matches = true;
@@ -783,8 +970,8 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
             }
             else
             {
-                sourceFile << R"(    )" << elseString << R"(if(source[startLocation] >= U')"
-                           << escapeChar(range.min) << R"(' && source[startLocation] <= U')"
+                sourceFile << R"(    )" << elseString << R"(if(source.get()[startLocation] >= U')"
+                           << escapeChar(range.min) << R"(' && source.get()[startLocation] <= U')"
                            << escapeChar(range.max) << R"(')
     {
         matches = true;
@@ -802,25 +989,25 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
             sourceFile << R"(    if(matches))";
         }
         sourceFile << R"(
-        return RuleResult::makeSuccess(startLocation + 1, startLocation, startLocation + 1);
-    return RuleResult::makeFail(
-        startLocation, startLocation, startLocation + 1, "missing character");
+        return makeSuccess(startLocation + 1, startLocation + 1);
+    return makeFail(startLocation, startLocation + 1, ")" << escapeString(matchFailMessage)
+                   << R"(", isRequiredForSuccess);
 }
 )";
     }
     virtual void visitEOFTerminal(ast::EOFTerminal *node) override
     {
         headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation);\n";
+                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
         sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation)
+                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     if(startLocation >= sourceSize)
     {
-        return RuleResult::makeSuccess(startLocation, startLocation);
+        return makeSuccess(startLocation);
     }
-    return RuleResult::makeFail(startLocation, startLocation, "expected end of file");
+    return makeFail(startLocation, startLocation, "expected end of file", isRequiredForSuccess);
 }
 )";
     }

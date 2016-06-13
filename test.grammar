@@ -48,17 +48,16 @@ identifierName = identifierStart identifierContinue* ws;
 
 identifier = !keyword identifierName;
 
-number = digit+ ("." digit*)? (("e" / "E") ("+" / "-")? digit+)? ws
-       / "." digit+ (("e" / "E") ("+" / "-")? digit+)? ws;
+number = digit+ ("." digit*)? ([eE] [+-]? digit+)? ws
+       / "." digit+ ([eE] [+-]? digit+)? ws;
 
 expression = additiveExpression ("," ws additiveExpression)*;
 
-additiveExpression = multiplicativeExpression (("+" / "-") ws multiplicativeExpression)*;
+additiveExpression = multiplicativeExpression ([+-] ws multiplicativeExpression)*;
 
-multiplicativeExpression = unaryExpression (("*" / "/" / "%") ws unaryExpression)*;
+multiplicativeExpression = unaryExpression ([*/%] ws unaryExpression)*;
 
-unaryExpression = "+" ws unaryExpression
-                / "-" ws unaryExpression
+unaryExpression = [+-] ws unaryExpression
                 / newExpression;
 
 newExpression = newKeyword newExpression
