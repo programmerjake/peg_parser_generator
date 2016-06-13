@@ -70,4 +70,4 @@ primaryExpression = "(" ws expression ")" ws
                   / identifier
                   / number;
 
-goal = ws (expression ";" ws)*;
+goal = ws (expression ";" ws)* EOF;
