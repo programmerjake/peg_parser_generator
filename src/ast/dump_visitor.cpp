@@ -27,6 +27,7 @@
 #include "repetition.h"
 #include "sequence.h"
 #include "terminal.h"
+#include "code_snippet.h"
 #include <sstream>
 #include <cassert>
 
@@ -229,5 +230,16 @@ void DumpVisitor::visitEOFTerminal(EOFTerminal *node)
 {
     indent();
     os << "EOFTerminal" << std::endl;
+}
+
+void DumpVisitor::visitCodeSnippet(CodeSnippet *node)
+{
+    indent();
+    os << "CodeSnippet code = '";
+    for(auto ch : node->code)
+    {
+        os << escapeCharacter(ch);
+    }
+    os << "'" << std::endl;
 }
 }

@@ -31,6 +31,7 @@
 #include "ast/repetition.h"
 #include "ast/sequence.h"
 #include "ast/terminal.h"
+#include "ast/code_snippet.h"
 #include "arena.h"
 #include "source.h"
 #include <cassert>
@@ -76,6 +77,7 @@ struct Parser final
             Identifier,
             EOFKeyword,
             CharacterClass,
+            CodeSnippet,
         };
         Location location;
         Type type;
@@ -269,6 +271,94 @@ struct Parser final
                 }
                 return Token(
                     std::move(tokenLocation), Token::Type::CharacterClass, std::move(value));
+            }
+            case '{':
+            {
+                get();
+                tokenLocation = currentLocation;
+                std::string value;
+                std::size_t nestLevel = 1;
+                while(peek != eof)
+                {
+                    if(peek == 'R')
+                    {
+                        value += static_cast<char>(get());
+                        if(peek != '\"')
+                            continue;
+                        value += static_cast<char>(get());
+                        std::string seperator;
+                        while(peek != '(' && peek != eof && peek != '\"' && peek != ')' && peek != ' ' && peek != '\t' && peek != '\\')
+                        {
+                            seperator += static_cast<char>(get());
+                        }
+                        value += seperator;
+                        if(peek != '(')
+                        {
+                            errorHandler(ErrorLevel::FatalError, tokenLocation, "C++11 raw string literal missing opening (");
+                            return Token();
+                        }
+                        value += static_cast<char>(get());
+                        seperator = ")" + std::move(seperator) + "\"";
+                        while(value.compare(value.size() - seperator.size(), seperator.size(), seperator) != 0)
+                        {
+                            if(peek == eof)
+                            {
+                                errorHandler(ErrorLevel::FatalError, tokenLocation, "C++11 raw string literal missing closing " + seperator);
+                                return Token();
+                            }
+                            value += static_cast<char>(get());
+                        }
+                        continue;
+                    }
+                    if(peek == '\'' || peek == '\"')
+                    {
+                        auto seperatorCharacter = peek;
+                        value += static_cast<char>(get());
+                        while(peek != seperatorCharacter && peek != eof && peek != '\r' && peek != '\n')
+                        {
+                            if(peek == '\\')
+                            {
+                                value += static_cast<char>(get());
+                                if(peek == eof)
+                                    break;
+                                value += static_cast<char>(get());
+                            }
+                            else
+                            {
+                                value += static_cast<char>(get());
+                            }
+                        }
+                        if(peek != seperatorCharacter)
+                        {
+                            errorHandler(ErrorLevel::FatalError, tokenLocation, std::string("string literal missing closing ") + static_cast<char>(seperatorCharacter));
+                            return Token();
+                        }
+                        continue;
+                    }
+                    if(peek == '{')
+                    {
+                        nestLevel++;
+                        value += static_cast<char>(get());
+                        continue;
+                    }
+                    if(peek == '}')
+                    {
+                        if(--nestLevel == 0)
+                            break;
+                        value += static_cast<char>(get());
+                        continue;
+                    }
+                    value += static_cast<char>(get());
+                }
+                if(peek != '}')
+                {
+                    errorHandler(ErrorLevel::FatalError, tokenLocation, "missing closing }");
+                }
+                else
+                {
+                    get();
+                }
+                return Token(std::move(tokenLocation), Token::Type::CodeSnippet, std::move(value));
             }
             case ';':
             {
@@ -688,6 +778,12 @@ struct Parser final
             auto expression = parsePrimaryExpression();
             return arena.make<ast::NotFollowedByPredicate>(emarkLocation, expression);
         }
+        case Token::Type::CodeSnippet:
+        {
+            auto retval = arena.make<ast::CodeSnippet>(token.location, token.value);
+            next();
+            return retval;
+        }
         default:
             errorHandler(ErrorLevel::FatalError, token.location, "missing expression");
             return nullptr;
@@ -747,6 +843,7 @@ struct Parser final
             case Token::Type::Identifier:
             case Token::Type::EOFKeyword:
             case Token::Type::CharacterClass:
+            case Token::Type::CodeSnippet:
                 break;
             }
             if(done)

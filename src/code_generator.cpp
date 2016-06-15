@@ -29,6 +29,7 @@
 #include "ast/repetition.h"
 #include "ast/sequence.h"
 #include "ast/terminal.h"
+#include "ast/code_snippet.h"
 #include "source.h"
 #include "location.h"
 #include <sstream>
@@ -256,8 +257,8 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
                     }
                     else
                     {
-                        ss <<escapeCharForCharacterClass(range.min);
-                        ss <<'-';
+                        ss << escapeCharForCharacterClass(range.min);
+                        ss << '-';
                         ss << escapeCharForCharacterClass(range.max);
                     }
                 }
@@ -1010,6 +1011,10 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     return makeFail(startLocation, startLocation, "expected end of file", isRequiredForSuccess);
 }
 )";
+    }
+    virtual void visitCodeSnippet(ast::CodeSnippet *node) override
+    {
+#warning finish
     }
 };
 

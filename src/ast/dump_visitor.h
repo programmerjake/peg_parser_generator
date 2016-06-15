@@ -62,6 +62,7 @@ public:
     virtual void visitTerminal(Terminal *node) override;
     virtual void visitCharacterClass(CharacterClass *node) override;
     virtual void visitEOFTerminal(EOFTerminal *node) override;
+    virtual void visitCodeSnippet(CodeSnippet *node) override;
 };
 }
 

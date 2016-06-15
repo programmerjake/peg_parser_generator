@@ -24,6 +24,7 @@
 #include "error.h"
 #include "code_generator.h"
 #include "ast/grammar.h"
+#include "ast/dump_visitor.h"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -47,6 +48,8 @@ int main()
             os.open("test.cpp");
             os << sourceStream.str();
             os.close();
+            ast::DumpVisitor visitor(std::cout);
+            grammar->visit(visitor);
         }
     }
     catch(FatalError &)

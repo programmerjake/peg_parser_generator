@@ -39,6 +39,7 @@ struct Sequence;
 struct Terminal;
 struct CharacterClass;
 struct EOFTerminal;
+struct CodeSnippet;
 struct Visitor
 {
     virtual ~Visitor() = default;
@@ -57,6 +58,7 @@ struct Visitor
     virtual void visitTerminal(Terminal *node) = 0;
     virtual void visitCharacterClass(CharacterClass *node) = 0;
     virtual void visitEOFTerminal(EOFTerminal *node) = 0;
+    virtual void visitCodeSnippet(CodeSnippet *node) = 0;
 };
 }
 
