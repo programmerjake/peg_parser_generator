@@ -32,6 +32,8 @@
 #include "ast/sequence.h"
 #include "ast/terminal.h"
 #include "ast/code_snippet.h"
+#include "ast/prologue.h"
+#include "ast/type.h"
 #include "arena.h"
 #include "source.h"
 #include <cassert>
@@ -76,6 +78,7 @@ struct Parser final
             String,
             Identifier,
             EOFKeyword,
+            TypedefKeyword,
             CharacterClass,
             CodeSnippet,
         };
@@ -198,6 +201,10 @@ struct Parser final
                 {
                     type = Token::Type::EOFKeyword;
                 }
+                else if(value == "typedef")
+                {
+                    type = Token::Type::TypedefKeyword;
+                }
                 return Token(std::move(tokenLocation), type, std::move(value));
             }
             switch(peek)
@@ -287,23 +294,33 @@ struct Parser final
                             continue;
                         value += static_cast<char>(get());
                         std::string seperator;
-                        while(peek != '(' && peek != eof && peek != '\"' && peek != ')' && peek != ' ' && peek != '\t' && peek != '\\')
+                        while(peek != '(' && peek != eof && peek != '\"' && peek != ')'
+                              && peek != ' '
+                              && peek != '\t'
+                              && peek != '\\')
                         {
                             seperator += static_cast<char>(get());
                         }
                         value += seperator;
                         if(peek != '(')
                         {
-                            errorHandler(ErrorLevel::FatalError, tokenLocation, "C++11 raw string literal missing opening (");
+                            errorHandler(ErrorLevel::FatalError,
+                                         tokenLocation,
+                                         "C++11 raw string literal missing opening (");
                             return Token();
                         }
                         value += static_cast<char>(get());
                         seperator = ")" + std::move(seperator) + "\"";
-                        while(value.compare(value.size() - seperator.size(), seperator.size(), seperator) != 0)
+                        while(value.compare(
+                                  value.size() - seperator.size(), seperator.size(), seperator)
+                              != 0)
                         {
                             if(peek == eof)
                             {
-                                errorHandler(ErrorLevel::FatalError, tokenLocation, "C++11 raw string literal missing closing " + seperator);
+                                errorHandler(
+                                    ErrorLevel::FatalError,
+                                    tokenLocation,
+                                    "C++11 raw string literal missing closing " + seperator);
                                 return Token();
                             }
                             value += static_cast<char>(get());
@@ -314,7 +331,8 @@ struct Parser final
                     {
                         auto seperatorCharacter = peek;
                         value += static_cast<char>(get());
-                        while(peek != seperatorCharacter && peek != eof && peek != '\r' && peek != '\n')
+                        while(peek != seperatorCharacter && peek != eof && peek != '\r'
+                              && peek != '\n')
                         {
                             if(peek == '\\')
                             {
@@ -330,9 +348,13 @@ struct Parser final
                         }
                         if(peek != seperatorCharacter)
                         {
-                            errorHandler(ErrorLevel::FatalError, tokenLocation, std::string("string literal missing closing ") + static_cast<char>(seperatorCharacter));
+                            errorHandler(ErrorLevel::FatalError,
+                                         tokenLocation,
+                                         std::string("string literal missing closing ")
+                                             + static_cast<char>(seperatorCharacter));
                             return Token();
                         }
+                        value += static_cast<char>(get());
                         continue;
                     }
                     if(peek == '{')
@@ -426,26 +448,60 @@ struct Parser final
             }
         }
     };
-    std::unordered_map<std::string, ast::Nonterminal *> symbolTable;
+    std::unordered_map<std::string, ast::Nonterminal *> nonterminalTable;
+    std::unordered_map<std::string, ast::Type *> typeTable;
     Tokenizer tokenizer;
     Token token;
     Arena &arena;
     ErrorHandler &errorHandler;
+    ast::Type *voidType;
+    ast::Type *charType;
     Parser(Arena &arena, ErrorHandler &errorHandler, const Source *source)
         : tokenizer(source),
           token(tokenizer.parseToken(errorHandler)),
           arena(arena),
-          errorHandler(errorHandler)
+          errorHandler(errorHandler), voidType(), charType()
     {
+        voidType = createBuiltinType("void", "void");
+        charType = createBuiltinType("char", "char32_t");
     }
-    ast::Nonterminal *getSymbol()
+    ast::Nonterminal *getNonterminal()
     {
         assert(token.type == Token::Type::Identifier);
-        ast::Nonterminal *&retval = symbolTable[token.value];
+        ast::Nonterminal *&retval = nonterminalTable[token.value];
         if(!retval)
             retval = arena.make<ast::Nonterminal>(
-                token.location, token.value, nullptr, ast::Nonterminal::Settings());
+                token.location, token.value, nullptr, nullptr, ast::Nonterminal::Settings());
         return retval;
+    }
+    ast::Type *getType()
+    {
+        assert(token.type == Token::Type::Identifier);
+        auto iter = typeTable.find(token.value);
+        if(iter == typeTable.end())
+        {
+            errorHandler(ErrorLevel::Error, token.location, "undefined type");
+            return nullptr;
+        }
+        return std::get<1>(*iter);
+    }
+    ast::Type *makeType(std::string code)
+    {
+        assert(token.type == Token::Type::Identifier);
+        ast::Type *&retval = typeTable[token.value];
+        if(retval)
+        {
+            errorHandler(ErrorLevel::Error, token.location, "already defined type");
+        }
+        retval = arena.make<ast::Type>(token.location, std::move(code), token.value);
+        return retval;
+    }
+    ast::Type *createBuiltinType(std::string name, std::string code)
+    {
+        auto *&type = typeTable[name];
+        assert(!type);
+        type = arena.make<ast::Type>(Location(tokenizer.currentLocation.source, 0), std::move(code), std::move(name));
+        return type;
     }
     void next()
     {
@@ -719,9 +775,22 @@ struct Parser final
         }
         case Token::Type::Identifier:
         {
-            auto nonterminal = getSymbol();
-            auto retval = arena.make<ast::NonterminalExpression>(token.location, nonterminal);
+            auto nonterminal = getNonterminal();
+            auto retval = arena.make<ast::NonterminalExpression>(token.location, nonterminal, "");
             next();
+            if(token.type == Token::Type::Colon)
+            {
+                next();
+                if(token.type != Token::Type::Identifier)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing variable name");
+                }
+                else
+                {
+                    retval->variableName = token.value;
+                    next();
+                }
+            }
             return retval;
         }
         case Token::Type::EOFKeyword:
@@ -760,8 +829,21 @@ struct Parser final
             bool inverted = false;
             parseCharacterClass(characterRanges, inverted);
             auto retval = arena.make<ast::CharacterClass>(
-                token.location, std::move(characterRanges), inverted);
+                token.location, std::move(characterRanges), inverted, "");
             next();
+            if(token.type == Token::Type::Colon)
+            {
+                next();
+                if(token.type != Token::Type::Identifier)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing variable name");
+                }
+                else
+                {
+                    retval->variableName = token.value;
+                    next();
+                }
+            }
             return retval;
         }
         case Token::Type::Amp:
@@ -831,6 +913,7 @@ struct Parser final
             case Token::Type::FSlash:
             case Token::Type::Equal:
             case Token::Type::RParen:
+            case Token::Type::TypedefKeyword:
                 done = true;
                 break;
             case Token::Type::QMark:
@@ -873,7 +956,7 @@ struct Parser final
             errorHandler(ErrorLevel::FatalError, token.location, "missing rule name");
             return nullptr;
         }
-        auto retval = getSymbol();
+        auto retval = getNonterminal();
         if(retval->expression)
         {
             errorHandler(ErrorLevel::Error, token.location, "rule already defined");
@@ -881,6 +964,19 @@ struct Parser final
             retval->expression = nullptr;
         }
         next();
+        if(token.type == Token::Type::Colon)
+        {
+            next();
+            if(token.type != Token::Type::Identifier)
+            {
+                errorHandler(ErrorLevel::FatalError, token.location, "missing variable name");
+            }
+            else
+            {
+                retval->type = getType();
+                next();
+            }
+        }
         if(token.type != Token::Type::Equal)
         {
             errorHandler(ErrorLevel::FatalError, token.location, "missing =");
@@ -894,25 +990,113 @@ struct Parser final
             return nullptr;
         }
         next();
+        if(retval->type == nullptr)
+        {
+            if(auto characterClass = dynamic_cast<ast::CharacterClass *>(retval->expression))
+            {
+                if(characterClass->variableName.empty())
+                {
+                    retval->type = charType;
+                }
+            }
+        }
+        if(retval->type == nullptr)
+        {
+            retval->type = voidType;
+        }
         return retval;
+    }
+    void parseType()
+    {
+        assert(token.type == Token::Type::TypedefKeyword);
+        next();
+        std::string code;
+        if(token.type == Token::Type::ColonColon)
+        {
+            code = "::";
+            next();
+        }
+        if(token.type != Token::Type::Identifier)
+        {
+            errorHandler(ErrorLevel::FatalError, token.location, "missing identifier");
+            return;
+        }
+        code += token.value;
+        next();
+        while(token.type == Token::Type::ColonColon)
+        {
+            code += "::";
+            next();
+            if(token.type != Token::Type::Identifier)
+            {
+                errorHandler(ErrorLevel::FatalError, token.location, "missing identifier");
+                return;
+            }
+            code += token.value;
+            next();
+        }
+        if(token.type != Token::Type::Identifier)
+        {
+            errorHandler(ErrorLevel::FatalError, token.location, "missing type name");
+            return;
+        }
+        makeType(std::move(code));
+        next();
+        if(token.type != Token::Type::Semicolon)
+        {
+            errorHandler(ErrorLevel::FatalError, token.location, "missing ;");
+            return;
+        }
+        next();
     }
     ast::Grammar *parseGrammar()
     {
         auto grammarLocation = token.location;
         std::vector<ast::Nonterminal *> nonterminals;
+        ast::Prologue *prologue = nullptr;
+        while(token.type == Token::Type::TypedefKeyword)
+        {
+            parseType();
+        }
+        if(token.type == Token::Type::CodeSnippet)
+        {
+            prologue = arena.make<ast::Prologue>(token.location, token.value);
+            next();
+        }
         while(token.type != Token::Type::EndOfFile)
         {
-            nonterminals.push_back(parseRule());
-        }
-        for(const auto &symbolTableEntry : symbolTable)
-        {
-            if(!std::get<1>(symbolTableEntry)->expression)
+            if(token.type == Token::Type::TypedefKeyword)
             {
-                errorHandler(
-                    ErrorLevel::Error, std::get<1>(symbolTableEntry)->location, "rule not defined");
+                parseType();
+            }
+            else
+            {
+                nonterminals.push_back(parseRule());
             }
         }
-        return arena.make<ast::Grammar>(std::move(grammarLocation), std::move(nonterminals));
+        for(const auto &nameAndNonterminal : nonterminalTable)
+        {
+            if(!std::get<1>(nameAndNonterminal)->expression)
+            {
+                errorHandler(ErrorLevel::Error,
+                             std::get<1>(nameAndNonterminal)->location,
+                             "rule not defined");
+            }
+        }
+        for(bool done = false; !done;)
+        {
+            done = true;
+            for(auto nonterminal : nonterminals)
+            {
+                if(nonterminal->settings.caching)
+                {
+                    nonterminal->settings.caching = nonterminal->expression->defaultNeedsCaching();
+                    if(!nonterminal->settings.caching)
+                        done = false;
+                }
+            }
+        }
+        return arena.make<ast::Grammar>(std::move(grammarLocation), prologue, std::move(nonterminals));
     }
 };
 

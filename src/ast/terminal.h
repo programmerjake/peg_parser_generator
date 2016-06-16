@@ -41,6 +41,10 @@ struct Terminal final : public Expression
     {
         visitor.visitTerminal(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return false;
+    }
 };
 
 struct CharacterClass final : public Expression
@@ -345,15 +349,24 @@ struct CharacterClass final : public Expression
     };
     CharacterRanges characterRanges;
     bool inverted;
-    CharacterClass(Location location, CharacterRanges characterRanges, bool inverted)
+    std::string variableName;
+    CharacterClass(Location location,
+                   CharacterRanges characterRanges,
+                   bool inverted,
+                   std::string variableName)
         : Expression(std::move(location)),
           characterRanges(std::move(characterRanges)),
-          inverted(inverted)
+          inverted(inverted),
+          variableName(std::move(variableName))
     {
     }
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitCharacterClass(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return false;
     }
 };
 
@@ -363,6 +376,10 @@ struct EOFTerminal final : public Expression
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitEOFTerminal(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return false;
     }
 };
 }

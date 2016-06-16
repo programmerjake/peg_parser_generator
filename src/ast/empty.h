@@ -34,6 +34,10 @@ struct Empty final : public Expression
     {
         visitor.visitEmpty(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return false;
+    }
 };
 }
 

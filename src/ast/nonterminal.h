@@ -25,6 +25,7 @@
 #include "expression.h"
 #include "node.h"
 #include "visitor.h"
+#include "type.h"
 #include <utility>
 #include <string>
 
@@ -34,15 +35,18 @@ struct Nonterminal final : public Node
 {
     std::string name;
     Expression *expression;
+    Type *type;
     struct Settings final
     {
         bool caching = true;
     };
     Settings settings;
-    Nonterminal(Location location, std::string name, Expression *expression, Settings settings)
+    Nonterminal(
+        Location location, std::string name, Expression *expression, Type *type, Settings settings)
         : Node(std::move(location)),
           name(std::move(name)),
           expression(expression),
+          type(type),
           settings(std::move(settings))
     {
     }
@@ -55,13 +59,18 @@ struct Nonterminal final : public Node
 struct NonterminalExpression final : public Expression
 {
     Nonterminal *value;
-    NonterminalExpression(Location location, Nonterminal *value)
-        : Expression(std::move(location)), value(value)
+    std::string variableName;
+    NonterminalExpression(Location location, Nonterminal *value, std::string variableName)
+        : Expression(std::move(location)), value(value), variableName(std::move(variableName))
     {
     }
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitNonterminalExpression(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return value->settings.caching;
     }
 };
 }

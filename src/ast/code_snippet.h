@@ -24,6 +24,7 @@
 
 #include "expression.h"
 #include "visitor.h"
+#include <string>
 
 namespace ast
 {
@@ -37,6 +38,10 @@ struct CodeSnippet final : public Expression
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitCodeSnippet(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return true;
     }
 };
 }

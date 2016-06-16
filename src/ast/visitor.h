@@ -40,6 +40,8 @@ struct Terminal;
 struct CharacterClass;
 struct EOFTerminal;
 struct CodeSnippet;
+struct Prologue;
+struct Type;
 struct Visitor
 {
     virtual ~Visitor() = default;
@@ -59,6 +61,8 @@ struct Visitor
     virtual void visitCharacterClass(CharacterClass *node) = 0;
     virtual void visitEOFTerminal(EOFTerminal *node) = 0;
     virtual void visitCodeSnippet(CodeSnippet *node) = 0;
+    virtual void visitPrologue(Prologue *node) = 0;
+    virtual void visitType(Type *node) = 0;
 };
 }
 

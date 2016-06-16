@@ -21,6 +21,8 @@
 
 // this is an example grammar based off of ecmascript
 
+typedef std::string string;
+
 digit = [0-9];
 
 letter = [a-zA-Z];
@@ -44,12 +46,12 @@ voidKeyword = "void" !identifierContinue ws;
 keyword = newKeyword
         / voidKeyword;
 
-identifierName = identifierStart identifierContinue* ws;
+identifierName:string = identifierStart:firstChar {$$ = std::string(1, firstChar);} (identifierContinue:nextChar {$$ += nextChar;})* ws;
 
-identifier = !keyword identifierName;
+identifier:string = !keyword identifierName:value {$$ = std::move(value);};
 
-number = digit+ ("." digit*)? ([eE] [+-]? digit+)? ws
-       / "." digit+ ([eE] [+-]? digit+)? ws;
+number:string = {$$ = "";} (digit:firstDigit {$$ += firstDigit;})+ ("." {$$ += ".";} (digit:secondDigit {$$ += secondDigit;})*)? ([eE]:exponentChar {$$ += exponentChar;} ([+-]:signChar {$$ += signChar;})? (digit:thirdDigit {$$ += thirdDigit;})+)? ws
+       / "." {$$ = ".";} (digit:firstDigit {$$ += firstDigit;})+ ([eE]:exponentChar {$$ += exponentChar;} ([+-]:signChar {$$ += signChar;})? (digit:secondDigit {$$ += secondDigit;})+)? ws;
 
 expression = additiveExpression ("," ws additiveExpression)*;
 

@@ -472,7 +472,8 @@ private:
 @+@+)";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
-            headerFile << "RuleResult " << translateName(nonterminal->name) << ";\n";
+            if(nonterminal->settings.caching)
+                headerFile << "RuleResult " << translateName(nonterminal->name) << ";\n";
         }
         headerFile << R"(@_@-};
     struct ResultsChunk final
@@ -680,29 +681,33 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
             nextPartNumber = 0;
-            currentPartNumber = nextPartNumber++;
             sourceFile << R"(
 void Parser::)" << translateName(nonterminal->name) << R"(()
 {
-    auto result = )" << translateName(nonterminal->name, currentPartNumber) << R"((0, true);
+    auto result = )" << translateName(nonterminal->name, nextPartNumber) << R"((0, true);
     if(result.fail())
         throw ParseError(errorLocation, errorMessage);
 }
 )";
-            headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                       << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-            sourceFile << R"(
+            if(nonterminal->settings.caching)
+            {
+                currentPartNumber = nextPartNumber++;
+                headerFile << "    RuleResult "
+                           << translateName(nonterminal->name, currentPartNumber)
+                           << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
+                sourceFile << R"(
 Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                       << R"((std::size_t startLocation, bool isRequiredForSuccess)
+                           << R"((std::size_t startLocation, bool isRequiredForSuccess)
 {
     RuleResult &retval = getResults(startLocation).)" << translateName(nonterminal->name) << R"(;
     if(!retval.empty())
         return retval;
     retval = )" << translateName(nonterminal->name, nextPartNumber)
-                       << R"((startLocation, isRequiredForSuccess);
+                           << R"((startLocation, isRequiredForSuccess);
     return retval;
 }
 )";
+            }
             currentPartNumber = nextPartNumber++;
             this->nonterminal = nonterminal;
             nonterminal->expression->visit(*this);
@@ -1015,6 +1020,13 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     virtual void visitCodeSnippet(ast::CodeSnippet *node) override
     {
 #warning finish
+    }
+    virtual void visitPrologue(ast::Prologue *node) override
+    {
+#warning finish
+    }
+    virtual void visitType(ast::Type *node) override
+    {
     }
 };
 

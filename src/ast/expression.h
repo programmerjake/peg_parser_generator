@@ -29,6 +29,7 @@ namespace ast
 struct Expression : public Node
 {
     using Node::Node;
+    virtual bool defaultNeedsCaching() = 0;
 };
 }
 

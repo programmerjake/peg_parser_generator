@@ -39,6 +39,10 @@ struct FollowedByPredicate final : public Expression
     {
         visitor.visitFollowedByPredicate(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return expression->defaultNeedsCaching();
+    }
 };
 
 struct NotFollowedByPredicate final : public Expression
@@ -52,6 +56,10 @@ struct NotFollowedByPredicate final : public Expression
     {
         visitor.visitNotFollowedByPredicate(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return expression->defaultNeedsCaching();
+    }
 };
 
 struct CustomPredicate final : public Expression
@@ -60,6 +68,10 @@ struct CustomPredicate final : public Expression
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitCustomPredicate(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return true;
     }
 };
 }

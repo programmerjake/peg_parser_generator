@@ -39,6 +39,10 @@ struct GreedyRepetition final : public Expression
     {
         visitor.visitGreedyRepetition(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return true;
+    }
 };
 
 struct GreedyPositiveRepetition final : public Expression
@@ -52,6 +56,10 @@ struct GreedyPositiveRepetition final : public Expression
     {
         visitor.visitGreedyPositiveRepetition(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return true;
+    }
 };
 
 struct OptionalExpression final : public Expression
@@ -64,6 +72,10 @@ struct OptionalExpression final : public Expression
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitOptionalExpression(this);
+    }
+    virtual bool defaultNeedsCaching() override
+    {
+        return expression->defaultNeedsCaching();
     }
 };
 }

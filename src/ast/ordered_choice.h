@@ -40,6 +40,10 @@ struct OrderedChoice final : public Expression
     {
         visitor.visitOrderedChoice(this);
     }
+    virtual bool defaultNeedsCaching() override
+    {
+        return first->defaultNeedsCaching() || second->defaultNeedsCaching();
+    }
 };
 }
 

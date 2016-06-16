@@ -28,6 +28,7 @@
 #include "sequence.h"
 #include "terminal.h"
 #include "code_snippet.h"
+#include "prologue.h"
 #include <sstream>
 #include <cassert>
 
@@ -102,6 +103,8 @@ void DumpVisitor::visitGrammar(Grammar *node)
     indent();
     os << "Grammar" << std::endl;
     indentDepth++;
+    if(node->prologue)
+        node->prologue->visit(*this);
     for(auto nonterminal : node->nonterminals)
     {
         nonterminal->visit(*this);
@@ -115,6 +118,7 @@ void DumpVisitor::visitNonterminal(Nonterminal *node)
     os << "Nonterminal name = \"" << node->name
        << "\" caching = " << (node->settings.caching ? "true" : "false") << std::endl;
     indentDepth++;
+    node->type->visit(*this);
     node->expression->visit(*this);
     indentDepth--;
 }
@@ -122,7 +126,8 @@ void DumpVisitor::visitNonterminal(Nonterminal *node)
 void DumpVisitor::visitNonterminalExpression(NonterminalExpression *node)
 {
     indent();
-    os << "NonterminalExpression Nonterminal->name = \"" << node->value->name << "\"" << std::endl;
+    os << "NonterminalExpression Nonterminal->name = \"" << node->value->name
+       << "\" variableName = \"" << node->variableName << "\"" << std::endl;
 }
 
 void DumpVisitor::visitOrderedChoice(OrderedChoice *node)
@@ -206,7 +211,8 @@ void DumpVisitor::visitTerminal(Terminal *node)
 void DumpVisitor::visitCharacterClass(CharacterClass *node)
 {
     indent();
-    os << "CharacterClass inverted = " << (node->inverted ? "true" : "false") << std::endl;
+    os << "CharacterClass inverted = " << (node->inverted ? "true" : "false")
+       << " variableName = \"" << node->variableName << "\"" << std::endl;
     indentDepth++;
     for(const auto &range : node->characterRanges.ranges)
     {
@@ -236,6 +242,28 @@ void DumpVisitor::visitCodeSnippet(CodeSnippet *node)
 {
     indent();
     os << "CodeSnippet code = '";
+    for(auto ch : node->code)
+    {
+        os << escapeCharacter(ch);
+    }
+    os << "'" << std::endl;
+}
+
+void DumpVisitor::visitPrologue(Prologue *node)
+{
+    indent();
+    os << "Prologue code = '";
+    for(auto ch : node->code)
+    {
+        os << escapeCharacter(ch);
+    }
+    os << "'" << std::endl;
+}
+
+void DumpVisitor::visitType(Type *node)
+{
+    indent();
+    os << "Type name = " << node->name << " code = '";
     for(auto ch : node->code)
     {
         os << escapeCharacter(ch);

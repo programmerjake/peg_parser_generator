@@ -19,32 +19,27 @@
  *
  */
 
-#ifndef AST_SEQUENCE_H_
-#define AST_SEQUENCE_H_
+#ifndef AST_PROLOGUE_H_
+#define AST_PROLOGUE_H_
 
-#include "expression.h"
+#include "node.h"
 #include "visitor.h"
-#include <utility>
+#include <string>
 
 namespace ast
 {
-struct Sequence final : public Expression
+struct Prologue final : public Node
 {
-    Expression *first;
-    Expression *second;
-    Sequence(Location location, Expression *first, Expression *second)
-        : Expression(std::move(location)), first(first), second(second)
+    std::string code;
+    Prologue(Location location, std::string code)
+        : Node(std::move(location)), code(std::move(code))
     {
     }
     virtual void visit(Visitor &visitor) override
     {
-        visitor.visitSequence(this);
-    }
-    virtual bool defaultNeedsCaching() override
-    {
-        return true;
+        visitor.visitPrologue(this);
     }
 };
 }
 
-#endif /* AST_SEQUENCE_H_ */
+#endif /* AST_PROLOGUE_H_ */

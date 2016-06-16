@@ -29,11 +29,13 @@
 
 namespace ast
 {
+struct Prologue;
 struct Grammar final : public Node
 {
+    Prologue *prologue;
     std::vector<Nonterminal *> nonterminals;
-    Grammar(Location location, std::vector<Nonterminal *> nonterminals)
-        : Node(std::move(location)), nonterminals(std::move(nonterminals))
+    Grammar(Location location, Prologue *prologue, std::vector<Nonterminal *> nonterminals)
+        : Node(std::move(location)), prologue(prologue), nonterminals(std::move(nonterminals))
     {
     }
     virtual void visit(Visitor &visitor) override
