@@ -22,10 +22,56 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <random>
 
 using namespace parser;
 
+namespace
+{
+void test(std::string input)
+{
+    try
+    {
+        auto output = Parser(input).parseGoal();
+        if(!output.empty())
+            std::cout << input << "\n" << output << std::endl;
+    }
+    catch(Parser::ParseError &e)
+    {
+    }
+}
+
+template <typename RE>
+std::string makeInput(RE &re)
+{
+    const char chars[] = "enw+-*/%012.() ";
+    std::size_t inputSize = 20;
+    std::string retval;
+    retval.reserve(inputSize + 1);
+    for(std::size_t i = 0; i < inputSize; i++)
+    {
+        retval += chars[std::uniform_int_distribution<std::size_t>(
+            0, sizeof(chars) / sizeof(chars[0]) - 1 - 1)(re)];
+    }
+    retval += ';';
+    return retval;
+}
+}
+
+#if 1
 int main()
+{
+    std::mt19937_64 re;
+    for(std::size_t i = 0; i < 1000000; i++)
+    {
+        if(i % 10000 == 0)
+            std::cout << "                  " << i << std::endl;
+        test(makeInput(re));
+    }
+    return 0;
+}
+#else
+int main(int argc, char **argv)
 {
     std::vector<std::size_t> lineStartingPositions;
     try
@@ -76,3 +122,4 @@ int main()
     }
     return 0;
 }
+#endif

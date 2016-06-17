@@ -53,22 +53,22 @@ identifier:string = !keyword identifierName:value {$$ = std::move(value);};
 number:string = {$$ = "";} (digit:digit1 {$$ += digit1;})+ ("." {$$ += ".";} (digit:digit2 {$$ += digit2;})*)? ([eE]:exponentChar1 {$$ += exponentChar1;} ([+-]:signChar1 {$$ += signChar1;})? (digit:digit3 {$$ += digit3;})+)? ws
        / "." {$$ = ".";} (digit:digit4 {$$ += digit4;})+ ([eE]:exponentChar2 {$$ += exponentChar2;} ([+-]:signChar2 {$$ += signChar2;})? (digit:digit5 {$$ += digit5;})+)? ws;
 
-expression:string = additiveExpression:expression1 {$$ = expression1;} ("," ws additiveExpression:expression2 {$$ += "," + expression2;})*;
+expression:string = additiveExpression:expression1 {$$ = expression1;} ("," ws additiveExpression:expression2 {$$ = "(" + std::move($$) + "," + expression2 + ")";})*;
 
-additiveExpression:string = multiplicativeExpression:expression1 {$$ = expression1;} ([+-]:op ws multiplicativeExpression:expression2 {$$ += static_cast<char>(op) + expression2;})*;
+additiveExpression:string = multiplicativeExpression:expression1 {$$ = expression1;} ([+-]:op ws multiplicativeExpression:expression2 {$$ = "(" + std::move($$) + static_cast<char>(op) + expression2 + ")";})*;
 
-multiplicativeExpression:string = unaryExpression:expression1 {$$ = expression1;} ([*/%]:op ws unaryExpression:expression2 {$$ += static_cast<char>(op) + expression2;})*;
+multiplicativeExpression:string = unaryExpression:expression1 {$$ = expression1;} ([*/%]:op ws unaryExpression:expression2 {$$ = "(" + std::move($$) + static_cast<char>(op) + expression2 + ")";})*;
 
-unaryExpression:string = [+-]:op ws unaryExpression:expression1 {$$ = static_cast<char>(op) + expression1;}
+unaryExpression:string = [+-]:op ws unaryExpression:expression1 {$$ = static_cast<char>(op) + std::string("(") + expression1 + ")";}
                 / newExpression:expression2 {$$ = expression2;};
 
-newExpression:string = newKeyword newExpression:expression1 {$$ = " new " + expression1;}
+newExpression:string = newKeyword newExpression:expression1 {$$ = "new (" + expression1 + ")";}
               / memberExpression:expression2 {$$ = expression2;};
 
-memberExpression:string = primaryExpression:expression {$$ = expression;} ("." ws identifier:identifier {$$ += "." + identifier;})*;
+memberExpression:string = primaryExpression:expression {$$ = expression;} ("." ws identifier:identifier {$$ = "(" + std::move($$) + ")." + identifier;})*;
  
-primaryExpression:string = "(" ws expression:expression ")" ws {$$ = "(" + expression + ")";}
-                  / identifier:identifier {$$ = " " + identifier + " ";}
-                  / number:number {$$ = " " + number + " ";};
+primaryExpression:string = "(" ws expression:expression ")" ws {$$ = expression;}
+                  / identifier:identifier {$$ = identifier;}
+                  / number:number {$$ = number;};
 
 goal:string = ws {$$ = "";} (expression:expression {$$ = expression + ";";} ";" ws)* EOF;
