@@ -44,6 +44,14 @@ struct OrderedChoice final : public Expression
     {
         return first->defaultNeedsCaching() || second->defaultNeedsCaching();
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return first->hasLeftRecursion() || second->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return first->canAcceptEmptyString() || second->canAcceptEmptyString();
+    }
 };
 }
 

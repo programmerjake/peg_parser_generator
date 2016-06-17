@@ -33,3 +33,13 @@ void Location::write(std::ostream &os) const
         source->writeLocation(os, position);
     }
 }
+
+std::size_t Location::getLine() const
+{
+    return source->translateLocation(position).line;
+}
+
+std::size_t Location::getColumn() const
+{
+    return source->translateLocation(position).column;
+}

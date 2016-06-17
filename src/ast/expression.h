@@ -30,6 +30,8 @@ struct Expression : public Node
 {
     using Node::Node;
     virtual bool defaultNeedsCaching() = 0;
+    virtual bool hasLeftRecursion() = 0;
+    virtual bool canAcceptEmptyString() = 0;
 };
 }
 

@@ -43,21 +43,25 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     std::ostringstream sourceFile;
     std::ostringstream headerFile;
     std::string headerFileNameFromSourceFile;
+    std::string sourceFileName;
     const std::size_t indentSize = 4;
     const std::size_t tabSize = 0;
     const ast::Nonterminal *nonterminal = nullptr;
     enum class State
     {
         ParseFunction,
+        DeclareLocals,
         EvaluateFunction,
     };
     State state = State::ParseFunction;
     CPlusPlus11(std::ostream &finalSourceFile,
                 std::ostream &finalHeaderFile,
-                std::string headerFileNameFromSourceFile)
+                std::string headerFileNameFromSourceFile,
+                std::string sourceFileName)
         : finalSourceFile(finalSourceFile),
           finalHeaderFile(finalHeaderFile),
-          headerFileNameFromSourceFile(std::move(headerFileNameFromSourceFile))
+          headerFileNameFromSourceFile(std::move(headerFileNameFromSourceFile)),
+          sourceFileName(std::move(sourceFileName))
     {
     }
     static std::string escapeChar(char32_t ch)
@@ -345,15 +349,29 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
         bool isAtStartOfLine = true;
         std::size_t indentDepth = 0;
         std::size_t startIndentDepth = 0;
+        std::size_t savedIndentDepth = 0;
+        std::size_t escapedCountLeft = 0;
+        std::size_t lineNumber = 1;
         for(std::size_t i = 0; i < source.size(); i++)
         {
             char ch = source[i];
+            if(escapedCountLeft > 0)
+            {
+                if(ch == '\n')
+                {
+                    lineNumber++;
+                }
+                os << ch;
+                escapedCountLeft--;
+                continue;
+            }
             assert(ch != '\r');
             assert(ch != '\t');
             assert(ch != '\f');
             assert(ch != '\0');
             if(ch == '\n')
             {
+                lineNumber++;
                 os << ch;
                 isAtStartOfLine = true;
                 indentDepth = startIndentDepth;
@@ -399,6 +417,65 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
                         assert(startIndentDepth >= indentSize);
                         startIndentDepth -= indentSize;
                         continue;
+                    case 's':
+                        savedIndentDepth = startIndentDepth;
+                        continue;
+                    case 'l':
+                    {
+                        std::ostringstream ss;
+                        lineNumber++;
+                        ss << "#line " << lineNumber << " \"" << escapeString(sourceFileName)
+                           << "\"\n";
+                        i++;
+                        assert(i < source.size() && source[i] == '\n');
+                        os << ss.str();
+                        continue;
+                    }
+                    case '0':
+                        startIndentDepth = 0;
+                        indentDepth = 0;
+                        continue;
+                    case 'r':
+                        startIndentDepth = savedIndentDepth;
+                        indentDepth = savedIndentDepth;
+                        continue;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                    case 'A':
+                    case 'B':
+                    case 'C':
+                    case 'D':
+                    case 'E':
+                    case 'F':
+                    {
+                        assert(escapedCountLeft == 0);
+                        if(source[i] >= '0' && source[i] <= '9')
+                            escapedCountLeft = source[i] - '0';
+                        else
+                            escapedCountLeft = source[i] - 'A' + 10;
+                        i++;
+                        assert(i < source.size());
+                        while((source[i] >= '0' && source[i] <= '9')
+                              || (source[i] >= 'A' && source[i] <= 'F'))
+                        {
+                            escapedCountLeft *= 0x10;
+                            if(source[i] >= '0' && source[i] <= '9')
+                                escapedCountLeft += source[i] - '0';
+                            else
+                                escapedCountLeft += source[i] - 'A' + 10;
+                            i++;
+                            assert(i < source.size());
+                        }
+                        assert(source[i] == ';');
+                        continue;
+                    }
                     }
                     assert(false);
                     continue;
@@ -415,6 +492,17 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
                 os << ch;
             }
         }
+        assert(escapedCountLeft == 0);
+    }
+    std::string makeEscape(std::size_t size)
+    {
+        if(size == 0)
+            return "";
+        std::ostringstream ss;
+        ss << std::uppercase;
+        ss << std::hex;
+        ss << "@" << size << ";";
+        return ss.str();
     }
     virtual void generateCode(const ast::Grammar *grammar) override
     {
@@ -439,6 +527,7 @@ namespace parser
 #include <sstream>
 #include <vector>
 #include <list>
+#include <cassert>
 
 namespace parser
 {
@@ -555,12 +644,14 @@ private:
     {
         return makeFail(inputEndLocation, inputEndLocation, message, isRequiredForSuccess);
     }
-    static constexpr RuleResult makeSuccess(std::size_t location, std::size_t inputEndLocation)
+    static RuleResult makeSuccess(std::size_t location, std::size_t inputEndLocation)
     {
+        assert(location != std::string::npos);
         return RuleResult(location, inputEndLocation, true);
     }
-    static constexpr RuleResult makeSuccess(std::size_t inputEndLocation)
+    static RuleResult makeSuccess(std::size_t inputEndLocation)
     {
+        assert(inputEndLocation != std::string::npos);
         return RuleResult(inputEndLocation, inputEndLocation, true);
     }
     static std::pair<std::shared_ptr<const char32_t>, std::size_t> makeSource(
@@ -695,7 +786,7 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
                        << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
             headerFile << "    " << nonterminal->type->code << " "
                        << makeInternalEvaluateFunctionName(nonterminal->name)
-                       << "(std::size_t startLocation);\n";
+                       << "(std::size_t startLocation, RuleResult &ruleResult);\n";
             sourceFile << R"(
 )" << nonterminal->type->code << R"( Parser::)" << makeParseFunctionName(nonterminal->name) << R"(()
 {
@@ -703,7 +794,7 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     if(result.fail())
         throw ParseError(errorLocation, errorMessage);
     )" << (nonterminal->type->isVoid ? "" : "return ")
-                       << makeInternalEvaluateFunctionName(nonterminal->name) << R"((0);
+                       << makeInternalEvaluateFunctionName(nonterminal->name) << R"((0, result);
 }
 
 )";
@@ -730,6 +821,41 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
             nonterminal->expression->visit(*this);
             sourceFile << R"(@_return ruleResult__;
 }
+
+)";
+            sourceFile << nonterminal->type->code << R"( Parser::)"
+                       << makeInternalEvaluateFunctionName(nonterminal->name)
+                       << R"((std::size_t startLocation__, RuleResult &ruleResult__)
+{
+@+)";
+            if(!nonterminal->type->isVoid)
+            {
+                sourceFile << nonterminal->type->code << R"( returnValue__{};
+)";
+            }
+            this->nonterminal = nonterminal;
+            state = State::DeclareLocals;
+            nonterminal->expression->visit(*this);
+            state = State::EvaluateFunction;
+            nonterminal->expression->visit(*this);
+            if(nonterminal->type->name == "char")
+            {
+                if(auto characterClass =
+                       dynamic_cast<ast::CharacterClass *>(nonterminal->expression))
+                {
+                    if(characterClass->variableName.empty())
+                    {
+                        sourceFile << R"(returnValue__ = this->source.get()[startLocation__];
+)";
+                    }
+                }
+            }
+            if(!nonterminal->type->isVoid)
+            {
+                sourceFile << R"(return returnValue__;
+)";
+            }
+            sourceFile << R"(@-}
 )";
         }
         headerFile << R"(};
@@ -747,6 +873,8 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     {
         switch(state)
         {
+        case State::DeclareLocals:
+            break;
         case State::EvaluateFunction:
         case State::ParseFunction:
             sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
@@ -766,11 +894,25 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     {
         switch(state)
         {
+        case State::DeclareLocals:
+            if(!node->variableName.empty())
+            {
+                sourceFile << node->value->type->code << R"( )" << node->variableName << R"({};
+)";
+            }
+            break;
         case State::EvaluateFunction:
-#warning finish
+            if(!node->variableName.empty())
+            {
+                sourceFile << node->variableName << R"( = )";
+            }
+            sourceFile << R"(this->)" << makeInternalEvaluateFunctionName(node->value->name)
+                       << R"((startLocation__, ruleResult__);
+)";
             break;
         case State::ParseFunction:
-            sourceFile << R"(ruleResult__ = this->)" << makeInternalParseFunctionName(node->value->name)
+            sourceFile << R"(ruleResult__ = this->)"
+                       << makeInternalParseFunctionName(node->value->name)
                        << R"((startLocation__, isRequiredForSuccess__);
 )";
             break;
@@ -780,9 +922,11 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->first->visit(*this);
+            node->second->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             node->first->visit(*this);
             sourceFile << R"(if(ruleResult__.fail())
@@ -806,9 +950,10 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->expression->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
@@ -821,8 +966,16 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     {
         switch(state)
         {
+        case State::DeclareLocals:
+            node->expression->visit(*this);
+            break;
         case State::EvaluateFunction:
-#warning finish
+            node->expression->visit(*this);
+            sourceFile << R"(if(ruleResult__.success())
+    ruleResult__ = this->makeFail(startLocation__, "not allowed here", false);
+else
+    ruleResult__ = this->makeSuccess(startLocation__);
+)";
             break;
         case State::ParseFunction:
             sourceFile << R"(isRequiredForSuccess__ = !isRequiredForSuccess__;
@@ -845,9 +998,10 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->expression->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
 {
@@ -859,7 +1013,7 @@ else
         startLocation__ = savedRuleResult__.location;
 @+@+)";
             node->expression->visit(*this);
-            sourceFile << R"(@_@_if(ruleResult__.fail())
+            sourceFile << R"(@_@_if(ruleResult__.fail() || ruleResult__.location == startLocation__)
         {
             savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
             startLocation__ = savedStartLocation__;
@@ -876,9 +1030,10 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->expression->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
@@ -891,7 +1046,7 @@ else
         startLocation__ = savedRuleResult__.location;
 @+@+)";
             node->expression->visit(*this);
-            sourceFile << R"(@_@_if(ruleResult__.fail())
+            sourceFile << R"(@_@_if(ruleResult__.fail() || ruleResult__.location == startLocation__)
         {
             savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
             startLocation__ = savedStartLocation__;
@@ -908,9 +1063,10 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->expression->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.fail())
@@ -923,9 +1079,11 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            node->first->visit(*this);
+            node->second->visit(*this);
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             node->first->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
@@ -944,14 +1102,16 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    ruleResult__ = this->makeFail(startLocation__, "missing )" << escapeString(getCharName(node->value))
-                       << R"(", isRequiredForSuccess__);
+    ruleResult__ = this->makeFail(startLocation__, "missing )"
+                       << escapeString(getCharName(node->value)) << R"(", )"
+                       << (state == State::EvaluateFunction ? R"(false)" :
+                                                              R"(isRequiredForSuccess__)") << R"();
 }
 else if(this->source.get()[startLocation__] == U')" << escapeChar(node->value) << R"(')
 {
@@ -960,7 +1120,9 @@ else if(this->source.get()[startLocation__] == U')" << escapeChar(node->value) <
 else
 {
     ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, "missing )"
-                       << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess__);
+                       << escapeString(getCharName(node->value)) << R"(", )"
+                       << (state == State::EvaluateFunction ? R"(false)" :
+                                                              R"(isRequiredForSuccess__)") << R"();
 }
 )";
             break;
@@ -971,14 +1133,21 @@ else
         std::string matchFailMessage = getCharacterClassMatchFailMessage(node);
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
+            if(!node->variableName.empty())
+            {
+                sourceFile << R"(char32_t )" << node->variableName << R"({};
+)";
+            }
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
         {
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    ruleResult__ = this->makeFail(startLocation__, "unexpected end of input", isRequiredForSuccess__);
+    ruleResult__ = this->makeFail(startLocation__, "unexpected end of input", )"
+                       << (state == State::EvaluateFunction ? R"(false)" :
+                                                              R"(isRequiredForSuccess__)") << R"();
 }
 else
 {
@@ -990,8 +1159,8 @@ else
                 if(range.min == range.max)
                 {
                     sourceFile << R"(    )" << elseString
-                               << R"(if(this->source.get()[startLocation__] == U')" << escapeChar(range.min)
-                               << R"(')
+                               << R"(if(this->source.get()[startLocation__] == U')"
+                               << escapeChar(range.min) << R"(')
     {
         matches = true;
     }
@@ -1000,7 +1169,8 @@ else
                 else
                 {
                     sourceFile << R"(    )" << elseString
-                               << R"(if(this->source.get()[startLocation__] >= U')" << escapeChar(range.min)
+                               << R"(if(this->source.get()[startLocation__] >= U')"
+                               << escapeChar(range.min)
                                << R"(' && this->source.get()[startLocation__] <= U')"
                                << escapeChar(range.max) << R"(')
     {
@@ -1019,10 +1189,23 @@ else
                 sourceFile << R"(    if(matches))";
             }
             sourceFile << R"(
+    {
         ruleResult__ = this->makeSuccess(startLocation__ + 1, startLocation__ + 1);
+)";
+            if(state == State::EvaluateFunction && !node->variableName.empty())
+            {
+                sourceFile << R"(        )" << node->variableName
+                           << R"( = this->source.get()[startLocation__];
+)";
+            }
+            sourceFile << R"(    }
     else
-        ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, ")" << escapeString(matchFailMessage)
-                       << R"(", isRequiredForSuccess__);
+    {
+        ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, ")"
+                       << escapeString(matchFailMessage) << R"(", )"
+                       << (state == State::EvaluateFunction ? R"(false)" :
+                                                              R"(isRequiredForSuccess__)") << R"();
+    }
 }
 )";
             break;
@@ -1033,9 +1216,9 @@ else
     {
         switch(state)
         {
-        case State::EvaluateFunction:
-#warning finish
+        case State::DeclareLocals:
             break;
+        case State::EvaluateFunction:
         case State::ParseFunction:
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
@@ -1043,7 +1226,9 @@ else
 }
 else
 {
-    ruleResult__ = this->makeFail(startLocation__, startLocation__, "expected end of file", isRequiredForSuccess__);
+    ruleResult__ = this->makeFail(startLocation__, startLocation__, "expected end of file", )"
+                       << (state == State::EvaluateFunction ? R"(false)" :
+                                                              R"(isRequiredForSuccess__)") << R"();
 }
 )";
             break;
@@ -1051,7 +1236,40 @@ else
     }
     virtual void visitCodeSnippet(ast::CodeSnippet *node) override
     {
-#warning finish
+        switch(state)
+        {
+        case State::DeclareLocals:
+        case State::ParseFunction:
+            sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
+)";
+            break;
+        case State::EvaluateFunction:
+        {
+            std::string code = node->code;
+            for(auto iter = node->substitutions.rbegin(); iter != node->substitutions.rend();
+                ++iter)
+            {
+                auto substitution = *iter;
+                switch(substitution.kind)
+                {
+                case ast::CodeSnippet::Substitution::Kind::ReturnValue:
+                    code.insert(substitution.position, "returnValue__");
+                    continue;
+                }
+                assert(false);
+            }
+            code.insert(0, node->location.getColumn() - 1, ' ');
+            sourceFile << R"({
+@s@0#line )" << node->location.getLine() << R"( ")" << escapeString(node->location.source->fileName)
+                       << R"("
+)" << makeEscape(code.size()) << code << R"(
+@l
+@r}
+ruleResult__ = this->makeSuccess(startLocation__);
+)";
+            break;
+        }
+        }
     }
     virtual void visitPrologue(ast::Prologue *node) override
     {
@@ -1063,8 +1281,13 @@ else
 };
 
 std::unique_ptr<CodeGenerator> CodeGenerator::makeCPlusPlus11(
-    std::ostream &sourceFile, std::ostream &headerFile, std::string headerFileNameFromSourceFile)
+    std::ostream &sourceFile,
+    std::ostream &headerFile,
+    std::string headerFileNameFromSourceFile,
+    std::string sourceFileName)
 {
-    return std::unique_ptr<CodeGenerator>(
-        new CPlusPlus11(sourceFile, headerFile, headerFileNameFromSourceFile));
+    return std::unique_ptr<CodeGenerator>(new CPlusPlus11(sourceFile,
+                                                          headerFile,
+                                                          std::move(headerFileNameFromSourceFile),
+                                                          std::move(sourceFileName)));
 }

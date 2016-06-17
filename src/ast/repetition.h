@@ -43,6 +43,14 @@ struct GreedyRepetition final : public Expression
     {
         return true;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return expression->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
+    }
 };
 
 struct GreedyPositiveRepetition final : public Expression
@@ -60,6 +68,14 @@ struct GreedyPositiveRepetition final : public Expression
     {
         return true;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return expression->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return expression->canAcceptEmptyString();
+    }
 };
 
 struct OptionalExpression final : public Expression
@@ -76,6 +92,14 @@ struct OptionalExpression final : public Expression
     virtual bool defaultNeedsCaching() override
     {
         return expression->defaultNeedsCaching();
+    }
+    virtual bool hasLeftRecursion() override
+    {
+        return expression->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
     }
 };
 }

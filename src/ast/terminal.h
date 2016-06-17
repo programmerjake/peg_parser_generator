@@ -45,6 +45,14 @@ struct Terminal final : public Expression
     {
         return false;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return false;
+    }
 };
 
 struct CharacterClass final : public Expression
@@ -368,6 +376,14 @@ struct CharacterClass final : public Expression
     {
         return false;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return false;
+    }
 };
 
 struct EOFTerminal final : public Expression
@@ -380,6 +396,14 @@ struct EOFTerminal final : public Expression
     virtual bool defaultNeedsCaching() override
     {
         return false;
+    }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
     }
 };
 }

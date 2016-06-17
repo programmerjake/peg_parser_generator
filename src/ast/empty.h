@@ -38,6 +38,14 @@ struct Empty final : public Expression
     {
         return false;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
+    }
 };
 }
 

@@ -39,6 +39,7 @@
 #include <cassert>
 #include <cctype>
 #include <unordered_map>
+#include <unordered_set>
 
 struct Parser final
 {
@@ -85,11 +86,22 @@ struct Parser final
         Location location;
         Type type;
         std::string value;
-        Token() : location(), type(Type::EndOfFile), value()
+        std::vector<ast::CodeSnippet::Substitution> substitutions;
+        Token() : location(), type(Type::EndOfFile), value(), substitutions()
         {
         }
         Token(Location location, Type type, std::string value)
-            : location(std::move(location)), type(type), value(std::move(value))
+            : location(std::move(location)), type(type), value(std::move(value)), substitutions()
+        {
+        }
+        Token(Location location,
+              Type type,
+              std::string value,
+              std::vector<ast::CodeSnippet::Substitution> substitutions)
+            : location(std::move(location)),
+              type(type),
+              value(std::move(value)),
+              substitutions(std::move(substitutions))
         {
         }
     };
@@ -285,6 +297,7 @@ struct Parser final
                 tokenLocation = currentLocation;
                 std::string value;
                 std::size_t nestLevel = 1;
+                std::vector<ast::CodeSnippet::Substitution> substitutions;
                 while(peek != eof)
                 {
                     if(peek == 'R')
@@ -297,6 +310,8 @@ struct Parser final
                         while(peek != '(' && peek != eof && peek != '\"' && peek != ')'
                               && peek != ' '
                               && peek != '\t'
+                              && peek != '\r'
+                              && peek != '\n'
                               && peek != '\\')
                         {
                             seperator += static_cast<char>(get());
@@ -323,7 +338,17 @@ struct Parser final
                                     "C++11 raw string literal missing closing " + seperator);
                                 return Token();
                             }
-                            value += static_cast<char>(get());
+                            if(peek == '\r')
+                            {
+                                get();
+                                if(peek == '\n')
+                                    get();
+                                value += '\n';
+                            }
+                            else
+                            {
+                                value += static_cast<char>(get());
+                            }
                         }
                         continue;
                     }
@@ -370,7 +395,35 @@ struct Parser final
                         value += static_cast<char>(get());
                         continue;
                     }
-                    value += static_cast<char>(get());
+                    if(peek == '$')
+                    {
+                        get();
+                        if(peek == '$')
+                        {
+                            substitutions.emplace_back(
+                                ast::CodeSnippet::Substitution::Kind::ReturnValue, value.size());
+                            get();
+                        }
+                        else
+                        {
+                            errorHandler(ErrorLevel::Warning,
+                                         tokenLocation,
+                                         "unrecognized code substitution");
+                            value += '$';
+                        }
+                        continue;
+                    }
+                    if(peek == '\r')
+                    {
+                        get();
+                        if(peek == '\n')
+                            get();
+                        value += '\n';
+                    }
+                    else
+                    {
+                        value += static_cast<char>(get());
+                    }
                 }
                 if(peek != '}')
                 {
@@ -380,7 +433,10 @@ struct Parser final
                 {
                     get();
                 }
-                return Token(std::move(tokenLocation), Token::Type::CodeSnippet, std::move(value));
+                return Token(std::move(tokenLocation),
+                             Token::Type::CodeSnippet,
+                             std::move(value),
+                             std::move(substitutions));
             }
             case ';':
             {
@@ -450,17 +506,21 @@ struct Parser final
     };
     std::unordered_map<std::string, ast::Nonterminal *> nonterminalTable;
     std::unordered_map<std::string, ast::Type *> typeTable;
+    std::unordered_set<std::string> variableNames;
     Tokenizer tokenizer;
     Token token;
     Arena &arena;
     ErrorHandler &errorHandler;
     ast::Type *voidType;
     ast::Type *charType;
+    std::vector<ast::NonterminalExpression *> nonterminalReferences;
     Parser(Arena &arena, ErrorHandler &errorHandler, const Source *source)
         : tokenizer(source),
           token(tokenizer.parseToken(errorHandler)),
           arena(arena),
-          errorHandler(errorHandler), voidType(), charType()
+          errorHandler(errorHandler),
+          voidType(),
+          charType()
     {
         voidType = createBuiltinType("void", "void", true);
         charType = createBuiltinType("char", "char32_t");
@@ -500,7 +560,10 @@ struct Parser final
     {
         auto *&type = typeTable[name];
         assert(!type);
-        type = arena.make<ast::Type>(Location(tokenizer.currentLocation.source, 0), std::move(code), std::move(name), isVoid);
+        type = arena.make<ast::Type>(Location(tokenizer.currentLocation.source, 0),
+                                     std::move(code),
+                                     std::move(name),
+                                     isVoid);
         return type;
     }
     void next()
@@ -778,6 +841,7 @@ struct Parser final
         {
             auto nonterminal = getNonterminal();
             auto retval = arena.make<ast::NonterminalExpression>(token.location, nonterminal, "");
+            nonterminalReferences.push_back(retval);
             next();
             if(token.type == Token::Type::Colon)
             {
@@ -790,7 +854,12 @@ struct Parser final
                 {
                     if(!codeAllowed)
                     {
-                        errorHandler(ErrorLevel::Error, token.location, "variable not allowed inside !");
+                        errorHandler(
+                            ErrorLevel::Error, token.location, "variable not allowed inside !");
+                    }
+                    if(!std::get<1>(variableNames.insert(token.value)))
+                    {
+                        errorHandler(ErrorLevel::Error, token.location, "duplicate variable name");
                     }
                     retval->variableName = token.value;
                     next();
@@ -847,7 +916,12 @@ struct Parser final
                 {
                     if(!codeAllowed)
                     {
-                        errorHandler(ErrorLevel::Error, token.location, "variable not allowed inside !");
+                        errorHandler(
+                            ErrorLevel::Error, token.location, "variable not allowed inside !");
+                    }
+                    if(!std::get<1>(variableNames.insert(token.value)))
+                    {
+                        errorHandler(ErrorLevel::Error, token.location, "duplicate variable name");
                     }
                     retval->variableName = token.value;
                     next();
@@ -871,7 +945,8 @@ struct Parser final
         }
         case Token::Type::CodeSnippet:
         {
-            auto retval = arena.make<ast::CodeSnippet>(token.location, token.value);
+            auto retval =
+                arena.make<ast::CodeSnippet>(token.location, token.value, token.substitutions);
             if(!codeAllowed)
             {
                 errorHandler(ErrorLevel::Error, token.location, "code not allowed inside !");
@@ -967,6 +1042,8 @@ struct Parser final
     }
     ast::Nonterminal *parseRule()
     {
+        variableNames.clear();
+        variableNames.insert("$$");
         if(token.type != Token::Type::Identifier)
         {
             errorHandler(ErrorLevel::FatalError, token.location, "missing rule name");
@@ -985,7 +1062,7 @@ struct Parser final
             next();
             if(token.type != Token::Type::Identifier)
             {
-                errorHandler(ErrorLevel::FatalError, token.location, "missing variable name");
+                errorHandler(ErrorLevel::FatalError, token.location, "missing type name");
             }
             else
             {
@@ -1106,7 +1183,56 @@ struct Parser final
                 nonterminal->settings.caching = nonterminal->expression->defaultNeedsCaching();
             }
         }
-        return arena.make<ast::Grammar>(std::move(grammarLocation), prologue, std::move(nonterminals));
+        for(auto nonterminalReference : nonterminalReferences)
+        {
+            if(!nonterminalReference->variableName.empty()
+               && nonterminalReference->value->type->isVoid)
+            {
+                errorHandler(ErrorLevel::Error,
+                             nonterminalReference->location,
+                             "can't create a void variable");
+            }
+        }
+        for(auto nonterminal : nonterminals)
+        {
+            nonterminal->settings.canAcceptEmptyString = true;
+            nonterminal->settings.hasLeftRecursion = true;
+        }
+        for(bool done = false; !done;)
+        {
+            done = true;
+            for(auto nonterminal : nonterminals)
+            {
+                if(nonterminal->settings.canAcceptEmptyString)
+                {
+                    nonterminal->settings.canAcceptEmptyString = nonterminal->expression->canAcceptEmptyString();
+                    if(!nonterminal->settings.canAcceptEmptyString)
+                        done = false;
+                }
+            }
+        }
+        for(bool done = false; !done;)
+        {
+            done = true;
+            for(auto nonterminal : nonterminals)
+            {
+                if(nonterminal->settings.hasLeftRecursion)
+                {
+                    nonterminal->settings.hasLeftRecursion = nonterminal->expression->hasLeftRecursion();
+                    if(!nonterminal->settings.hasLeftRecursion)
+                        done = false;
+                }
+            }
+        }
+        for(auto nonterminal : nonterminals)
+        {
+            if(nonterminal->settings.hasLeftRecursion)
+            {
+                errorHandler(ErrorLevel::Error, nonterminal->location, "left-recursive rule");
+            }
+        }
+        return arena.make<ast::Grammar>(
+            std::move(grammarLocation), prologue, std::move(nonterminals));
     }
 };
 

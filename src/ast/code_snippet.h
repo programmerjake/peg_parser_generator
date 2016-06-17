@@ -31,8 +31,26 @@ namespace ast
 struct CodeSnippet final : public Expression
 {
     std::string code;
-    CodeSnippet(Location location, std::string code)
-        : Expression(std::move(location)), code(std::move(code))
+    struct Substitution final
+    {
+        enum class Kind
+        {
+            ReturnValue
+        };
+        Kind kind;
+        std::size_t position;
+        Substitution(Kind kind, std::size_t position) : kind(kind), position(position)
+        {
+        }
+        Substitution() : kind(), position()
+        {
+        }
+    };
+    std::vector<Substitution> substitutions;
+    CodeSnippet(Location location, std::string code, std::vector<Substitution> substitutions)
+        : Expression(std::move(location)),
+          code(std::move(code)),
+          substitutions(std::move(substitutions))
     {
     }
     virtual void visit(Visitor &visitor) override
@@ -40,6 +58,14 @@ struct CodeSnippet final : public Expression
         visitor.visitCodeSnippet(this);
     }
     virtual bool defaultNeedsCaching() override
+    {
+        return true;
+    }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
     {
         return true;
     }

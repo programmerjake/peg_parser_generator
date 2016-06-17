@@ -35,9 +35,9 @@ blockComment = "/*" ([^/*] / "*"+[^/])* "*/";
 
 ws = (wsChar / lineComment / blockComment)*;
 
-identifierStart = letter / "_";
+identifierStart:char = letter:letter {$$ = letter;} / "_" {$$ = '_';};
 
-identifierContinue = identifierStart / digit;
+identifierContinue:char = identifierStart:idStart {$$ = idStart;} / digit:digit {$$ = digit;};
 
 newKeyword = "new" !identifierContinue ws;
 
@@ -50,25 +50,25 @@ identifierName:string = identifierStart:firstChar {$$ = std::string(1, firstChar
 
 identifier:string = !keyword identifierName:value {$$ = std::move(value);};
 
-number:string = {$$ = "";} (digit:firstDigit {$$ += firstDigit;})+ ("." {$$ += ".";} (digit:secondDigit {$$ += secondDigit;})*)? ([eE]:exponentChar {$$ += exponentChar;} ([+-]:signChar {$$ += signChar;})? (digit:thirdDigit {$$ += thirdDigit;})+)? ws
-       / "." {$$ = ".";} (digit:firstDigit {$$ += firstDigit;})+ ([eE]:exponentChar {$$ += exponentChar;} ([+-]:signChar {$$ += signChar;})? (digit:secondDigit {$$ += secondDigit;})+)? ws;
+number:string = {$$ = "";} (digit:digit1 {$$ += digit1;})+ ("." {$$ += ".";} (digit:digit2 {$$ += digit2;})*)? ([eE]:exponentChar1 {$$ += exponentChar1;} ([+-]:signChar1 {$$ += signChar1;})? (digit:digit3 {$$ += digit3;})+)? ws
+       / "." {$$ = ".";} (digit:digit4 {$$ += digit4;})+ ([eE]:exponentChar2 {$$ += exponentChar2;} ([+-]:signChar2 {$$ += signChar2;})? (digit:digit5 {$$ += digit5;})+)? ws;
 
-expression = additiveExpression ("," ws additiveExpression)*;
+expression:string = additiveExpression:expression1 {$$ = expression1;} ("," ws additiveExpression:expression2 {$$ += "," + expression2;})*;
 
-additiveExpression = multiplicativeExpression ([+-] ws multiplicativeExpression)*;
+additiveExpression:string = multiplicativeExpression:expression1 {$$ = expression1;} ([+-]:op ws multiplicativeExpression:expression2 {$$ += static_cast<char>(op) + expression2;})*;
 
-multiplicativeExpression = unaryExpression ([*/%] ws unaryExpression)*;
+multiplicativeExpression:string = unaryExpression:expression1 {$$ = expression1;} ([*/%]:op ws unaryExpression:expression2 {$$ += static_cast<char>(op) + expression2;})*;
 
-unaryExpression = [+-] ws unaryExpression
-                / newExpression;
+unaryExpression:string = [+-]:op ws unaryExpression:expression1 {$$ = static_cast<char>(op) + expression1;}
+                / newExpression:expression2 {$$ = expression2;};
 
-newExpression = newKeyword newExpression
-              / memberExpression;
+newExpression:string = newKeyword newExpression:expression1 {$$ = " new " + expression1;}
+              / memberExpression:expression2 {$$ = expression2;};
 
-memberExpression = primaryExpression ("." ws identifier)*;
+memberExpression:string = primaryExpression:expression {$$ = expression;} ("." ws identifier:identifier {$$ += "." + identifier;})*;
  
-primaryExpression = "(" ws expression ")" ws
-                  / identifier
-                  / number;
+primaryExpression:string = "(" ws expression:expression ")" ws {$$ = "(" + expression + ")";}
+                  / identifier:identifier {$$ = " " + identifier + " ";}
+                  / number:number {$$ = " " + number + " ";};
 
-goal = ws (expression ";" ws)* EOF;
+goal:string = ws {$$ = "";} (expression:expression {$$ = expression + ";";} ";" ws)* EOF;

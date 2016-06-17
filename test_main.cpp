@@ -54,7 +54,7 @@ int main()
                 input += static_cast<char>(ch);
             }
         }
-        Parser(input).parseGoal();
+        std::cout << Parser(input).parseGoal() << std::endl;
     }
     catch(Parser::ParseError &e)
     {

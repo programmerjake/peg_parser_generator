@@ -40,7 +40,7 @@ int main()
         if(!errorHandler.anyErrors)
         {
             std::ostringstream headerStream, sourceStream;
-            CodeGenerator::makeCPlusPlus11(sourceStream, headerStream, "test.h")->generateCode(grammar);
+            CodeGenerator::makeCPlusPlus11(sourceStream, headerStream, "test.h", "test.cpp")->generateCode(grammar);
             std::ofstream os;
             os.open("test.h");
             os << headerStream.str();

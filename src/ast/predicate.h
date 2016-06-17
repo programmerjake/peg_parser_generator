@@ -43,6 +43,14 @@ struct FollowedByPredicate final : public Expression
     {
         return expression->defaultNeedsCaching();
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return expression->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
+    }
 };
 
 struct NotFollowedByPredicate final : public Expression
@@ -60,6 +68,14 @@ struct NotFollowedByPredicate final : public Expression
     {
         return expression->defaultNeedsCaching();
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return expression->hasLeftRecursion();
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return true;
+    }
 };
 
 struct CustomPredicate final : public Expression
@@ -70,6 +86,14 @@ struct CustomPredicate final : public Expression
         visitor.visitCustomPredicate(this);
     }
     virtual bool defaultNeedsCaching() override
+    {
+        return true;
+    }
+    virtual bool hasLeftRecursion() override
+    {
+        return false;
+    }
+    virtual bool canAcceptEmptyString() override
     {
         return true;
     }

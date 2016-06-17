@@ -39,6 +39,8 @@ struct Nonterminal final : public Node
     struct Settings final
     {
         bool caching = true;
+        bool hasLeftRecursion = true;
+        bool canAcceptEmptyString = true;
     };
     Settings settings;
     Nonterminal(
@@ -71,6 +73,14 @@ struct NonterminalExpression final : public Expression
     virtual bool defaultNeedsCaching() override
     {
         return false;
+    }
+    virtual bool hasLeftRecursion() override
+    {
+        return value->settings.hasLeftRecursion;
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return value->settings.canAcceptEmptyString;
     }
 };
 }

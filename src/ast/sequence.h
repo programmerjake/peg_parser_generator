@@ -44,6 +44,15 @@ struct Sequence final : public Expression
     {
         return true;
     }
+    virtual bool hasLeftRecursion() override
+    {
+        return first->hasLeftRecursion()
+               || (first->canAcceptEmptyString() && second->hasLeftRecursion());
+    }
+    virtual bool canAcceptEmptyString() override
+    {
+        return first->canAcceptEmptyString() && second->canAcceptEmptyString();
+    }
 };
 }
 

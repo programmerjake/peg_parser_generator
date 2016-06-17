@@ -23,6 +23,7 @@
 #define LOCATION_H_
 
 #include <iosfwd>
+#include <cstddef>
 
 struct Source;
 
@@ -50,6 +51,8 @@ struct Location final
         location.write(os);
         return os;
     }
+    std::size_t getLine() const;
+    std::size_t getColumn() const;
 };
 
 #endif /* LOCATION_H_ */
