@@ -772,7 +772,7 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
         case State::ParseFunction:
             sourceFile << R"(ruleResult__ = this->)" << makeInternalParseFunctionName(node->value->name)
                        << R"((startLocation__, isRequiredForSuccess__);
-    )";
+)";
             break;
         }
     }
