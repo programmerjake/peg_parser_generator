@@ -32,8 +32,9 @@ struct Type final : public Node
 {
     std::string code;
     std::string name;
-    Type(Location location, std::string code, std::string name)
-        : Node(std::move(location)), code(std::move(code)), name(std::move(name))
+    bool isVoid;
+    Type(Location location, std::string code, std::string name, bool isVoid = false)
+        : Node(std::move(location)), code(std::move(code)), name(std::move(name)), isVoid(isVoid)
     {
     }
     virtual void visit(Visitor &visitor) override

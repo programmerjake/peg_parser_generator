@@ -45,9 +45,13 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     std::string headerFileNameFromSourceFile;
     const std::size_t indentSize = 4;
     const std::size_t tabSize = 0;
-    std::size_t nextPartNumber = 0;
-    std::size_t currentPartNumber = 0;
     const ast::Nonterminal *nonterminal = nullptr;
+    enum class State
+    {
+        ParseFunction,
+        EvaluateFunction,
+    };
+    State state = State::ParseFunction;
     CPlusPlus11(std::ostream &finalSourceFile,
                 std::ostream &finalHeaderFile,
                 std::string headerFileNameFromSourceFile)
@@ -279,21 +283,27 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
         }
         return retval;
     }
-    static std::string translateName(std::string name, std::size_t partNumber = std::string::npos)
+    static std::string translateName(const char *prefix, std::string name, const char *suffix)
     {
         assert(!name.empty());
-        std::ostringstream ss;
-        if(partNumber == std::string::npos)
-        {
-            ss << "parseRule";
-        }
-        else
-        {
-            ss << "rulePart" << partNumber;
-        }
         name[0] = std::toupper(name[0]);
-        ss << name;
-        return ss.str();
+        return prefix + std::move(name) + suffix;
+    }
+    static std::string makeResultVariableName(std::string name)
+    {
+        return translateName("result", std::move(name), "");
+    }
+    static std::string makeParseFunctionName(std::string name)
+    {
+        return translateName("parse", std::move(name), "");
+    }
+    static std::string makeInternalParseFunctionName(std::string name)
+    {
+        return translateName("internalParse", std::move(name), "");
+    }
+    static std::string makeInternalEvaluateFunctionName(std::string name)
+    {
+        return translateName("internalEvaluate", std::move(name), "");
     }
     std::string getGuardMacroName() const
     {
@@ -473,7 +483,7 @@ private:
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
             if(nonterminal->settings.caching)
-                headerFile << "RuleResult " << translateName(nonterminal->name) << ";\n";
+                headerFile << "RuleResult " << makeResultVariableName(nonterminal->name) << ";\n";
         }
         headerFile << R"(@_@-};
     struct ResultsChunk final
@@ -575,7 +585,8 @@ public:
 @+)";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
-            headerFile << "void " << translateName(nonterminal->name) << "();\n";
+            headerFile << nonterminal->type->code << " " << makeParseFunctionName(nonterminal->name)
+                       << "();\n";
         }
         headerFile << R"(@-
 private:
@@ -680,37 +691,46 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
 )";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
-            nextPartNumber = 0;
+            headerFile << "    RuleResult " << makeInternalParseFunctionName(nonterminal->name)
+                       << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
+            headerFile << "    " << nonterminal->type->code << " "
+                       << makeInternalEvaluateFunctionName(nonterminal->name)
+                       << "(std::size_t startLocation);\n";
             sourceFile << R"(
-void Parser::)" << translateName(nonterminal->name) << R"(()
+)" << nonterminal->type->code << R"( Parser::)" << makeParseFunctionName(nonterminal->name) << R"(()
 {
-    auto result = )" << translateName(nonterminal->name, nextPartNumber) << R"((0, true);
+    auto result = )" << makeInternalParseFunctionName(nonterminal->name) << R"((0, true);
     if(result.fail())
         throw ParseError(errorLocation, errorMessage);
+    )" << (nonterminal->type->isVoid ? "" : "return ")
+                       << makeInternalEvaluateFunctionName(nonterminal->name) << R"((0);
 }
+
+)";
+            sourceFile << R"(Parser::RuleResult Parser::)"
+                       << makeInternalParseFunctionName(nonterminal->name)
+                       << R"((std::size_t startLocation__, bool isRequiredForSuccess__)
+{
 )";
             if(nonterminal->settings.caching)
             {
-                currentPartNumber = nextPartNumber++;
-                headerFile << "    RuleResult "
-                           << translateName(nonterminal->name, currentPartNumber)
-                           << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-                sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                           << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    RuleResult &retval = getResults(startLocation).)" << translateName(nonterminal->name) << R"(;
-    if(!retval.empty())
-        return retval;
-    retval = )" << translateName(nonterminal->name, nextPartNumber)
-                           << R"((startLocation, isRequiredForSuccess);
-    return retval;
+                sourceFile << R"(    auto &ruleResult__ = this->getResults(startLocation__).)"
+                           << makeResultVariableName(nonterminal->name) << R"(;
+    if(!ruleResult__.empty())
+        return ruleResult__;
+@+)";
+            }
+            else
+            {
+                sourceFile << R"(    Parser::RuleResult ruleResult__;
+@+)";
+            }
+            this->nonterminal = nonterminal;
+            state = State::ParseFunction;
+            nonterminal->expression->visit(*this);
+            sourceFile << R"(@_return ruleResult__;
 }
 )";
-            }
-            currentPartNumber = nextPartNumber++;
-            this->nonterminal = nonterminal;
-            nonterminal->expression->visit(*this);
         }
         headerFile << R"(};
 }
@@ -725,15 +745,14 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     }
     virtual void visitEmpty(ast::Empty *node) override
     {
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    return makeSuccess(startLocation);
-}
-)";
+        switch(state)
+        {
+        case State::EvaluateFunction:
+        case State::ParseFunction:
+            sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
+    )";
+            break;
+        }
     }
     virtual void visitGrammar(ast::Grammar *node) override
     {
@@ -745,82 +764,78 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     }
     virtual void visitNonterminalExpression(ast::NonterminalExpression *node) override
     {
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    return )" << translateName(node->value->name, 0) << R"((startLocation, isRequiredForSuccess);
-}
-)";
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            sourceFile << R"(ruleResult__ = this->)" << makeInternalParseFunctionName(node->value->name)
+                       << R"((startLocation__, isRequiredForSuccess__);
+    )";
+            break;
+        }
     }
     virtual void visitOrderedChoice(ast::OrderedChoice *node) override
     {
-        auto firstPartNumber = nextPartNumber++;
-        auto secondPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            node->first->visit(*this);
+            sourceFile << R"(if(ruleResult__.fail())
 {
-    auto firstResult = )" << translateName(nonterminal->name, firstPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(firstResult.success())
-        return firstResult;
-    auto secondResult = )" << translateName(nonterminal->name, secondPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(secondResult.fail())
-        return secondResult;
-    if(firstResult.endLocation >= secondResult.endLocation)
-        secondResult.endLocation = firstResult.endLocation;
-    return secondResult;
+    Parser::RuleResult lastRuleResult__ = ruleResult__;
+@+)";
+            node->second->visit(*this);
+            sourceFile << R"(@_if(ruleResult__.success())
+    {
+        if(lastRuleResult__.endLocation >= ruleResult__.endLocation)
+        {
+            ruleResult__.endLocation = lastRuleResult__.endLocation;
+        }
+    }
 }
 )";
-        currentPartNumber = firstPartNumber;
-        node->first->visit(*this);
-        currentPartNumber = secondPartNumber;
-        node->second->visit(*this);
+            break;
+        }
     }
     virtual void visitFollowedByPredicate(ast::FollowedByPredicate *node) override
     {
-        auto expressionPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(expressionResult.fail())
-        return expressionResult;
-    expressionResult.location = startLocation;
-    return expressionResult;
-}
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            node->expression->visit(*this);
+            sourceFile << R"(if(ruleResult__.success())
+    ruleResult__.location = startLocation__;
 )";
-        currentPartNumber = expressionPartNumber;
-        node->expression->visit(*this);
+            break;
+        }
     }
     virtual void visitNotFollowedByPredicate(ast::NotFollowedByPredicate *node) override
     {
-        auto expressionPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation, !isRequiredForSuccess);
-    if(expressionResult.fail())
-        return makeSuccess(startLocation);
-    return makeFail(startLocation, "not allowed here", isRequiredForSuccess);
-}
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            sourceFile << R"(isRequiredForSuccess__ = !isRequiredForSuccess__;
 )";
-        currentPartNumber = expressionPartNumber;
-        node->expression->visit(*this);
+            node->expression->visit(*this);
+            sourceFile << R"(isRequiredForSuccess__ = !isRequiredForSuccess__;
+if(ruleResult__.success())
+    ruleResult__ = this->makeFail(startLocation__, "not allowed here", isRequiredForSuccess__);
+else
+    ruleResult__ = this->makeSuccess(startLocation__);
+)";
+            break;
+        }
     }
     virtual void visitCustomPredicate(ast::CustomPredicate *node) override
     {
@@ -828,194 +843,211 @@ Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNum
     }
     virtual void visitGreedyRepetition(ast::GreedyRepetition *node) override
     {
-        auto expressionPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
 {
-    auto retval = makeSuccess(startLocation);
+    auto savedStartLocation__ = startLocation__;
+    auto &savedRuleResult__ = ruleResult__;
     while(true)
     {
-        auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((retval.location, isRequiredForSuccess);
-        if(expressionResult.fail())
+        Parser::RuleResult ruleResult__;
+        startLocation__ = savedRuleResult__.location;
+@+@+)";
+            node->expression->visit(*this);
+            sourceFile << R"(@_@_if(ruleResult__.fail())
         {
-            retval = makeSuccess(retval.location, expressionResult.endLocation);
+            savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
+            startLocation__ = savedStartLocation__;
             break;
         }
-        retval = makeSuccess(expressionResult.location, expressionResult.endLocation);
+        savedRuleResult__ = this->makeSuccess(ruleResult__.location, ruleResult__.endLocation);
     }
-    return retval;
 }
 )";
-        currentPartNumber = expressionPartNumber;
-        node->expression->visit(*this);
+            break;
+        }
     }
     virtual void visitGreedyPositiveRepetition(ast::GreedyPositiveRepetition *node) override
     {
-        auto expressionPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            node->expression->visit(*this);
+            sourceFile << R"(if(ruleResult__.success())
 {
-    auto retval = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(retval.fail())
-        return retval;
+    auto savedStartLocation__ = startLocation__;
+    auto &savedRuleResult__ = ruleResult__;
     while(true)
     {
-        auto expressionResult = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((retval.location, isRequiredForSuccess);
-        if(expressionResult.fail())
+        Parser::RuleResult ruleResult__;
+        startLocation__ = savedRuleResult__.location;
+@+@+)";
+            node->expression->visit(*this);
+            sourceFile << R"(@_@_if(ruleResult__.fail())
         {
-            retval = makeSuccess(retval.location, expressionResult.endLocation);
+            savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
+            startLocation__ = savedStartLocation__;
             break;
         }
-        retval = makeSuccess(expressionResult.location, expressionResult.endLocation);
+        savedRuleResult__ = this->makeSuccess(ruleResult__.location, ruleResult__.endLocation);
     }
-    return retval;
 }
 )";
-        currentPartNumber = expressionPartNumber;
-        node->expression->visit(*this);
+            break;
+        }
     }
     virtual void visitOptionalExpression(ast::OptionalExpression *node) override
     {
-        auto expressionPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
-{
-    auto retval = )" << translateName(nonterminal->name, expressionPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(retval.fail())
-        return makeSuccess(startLocation);
-    return retval;
-}
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            node->expression->visit(*this);
+            sourceFile << R"(if(ruleResult__.fail())
+    ruleResult__ = this->makeSuccess(startLocation__);
 )";
-        currentPartNumber = expressionPartNumber;
-        node->expression->visit(*this);
+            break;
+        }
     }
     virtual void visitSequence(ast::Sequence *node) override
     {
-        auto firstPartNumber = nextPartNumber++;
-        auto secondPartNumber = nextPartNumber++;
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            node->first->visit(*this);
+            sourceFile << R"(if(ruleResult__.success())
 {
-    auto firstResult = )" << translateName(nonterminal->name, firstPartNumber)
-                   << R"((startLocation, isRequiredForSuccess);
-    if(firstResult.fail())
-        return firstResult;
-    return )" << translateName(nonterminal->name, secondPartNumber)
-                   << R"((firstResult.location, isRequiredForSuccess);
+    auto savedStartLocation__ = startLocation__;
+    startLocation__ = ruleResult__.location;
+@+)";
+            node->second->visit(*this);
+            sourceFile << R"(@_startLocation__ = savedStartLocation__;
 }
 )";
-        currentPartNumber = firstPartNumber;
-        node->first->visit(*this);
-        currentPartNumber = secondPartNumber;
-        node->second->visit(*this);
+            break;
+        }
     }
     virtual void visitTerminal(ast::Terminal *node) override
     {
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    if(startLocation >= sourceSize)
-    {
-        return makeFail(startLocation, "missing )" << escapeString(getCharName(node->value))
-                   << R"(", isRequiredForSuccess);
-    }
-    if(source.get()[startLocation] == U')" << escapeChar(node->value) << R"(')
-    {
-        return makeSuccess(startLocation + 1, startLocation + 1);
-    }
-    return makeFail(startLocation, startLocation + 1, "missing )"
-                   << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess);
+    ruleResult__ = this->makeFail(startLocation__, "missing )" << escapeString(getCharName(node->value))
+                       << R"(", isRequiredForSuccess__);
+}
+else if(this->source.get()[startLocation__] == U')" << escapeChar(node->value) << R"(')
+{
+    ruleResult__ = this->makeSuccess(startLocation__ + 1, startLocation__ + 1);
+}
+else
+{
+    ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, "missing )"
+                       << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess__);
 }
 )";
+            break;
+        }
     }
     virtual void visitCharacterClass(ast::CharacterClass *node) override
     {
         std::string matchFailMessage = getCharacterClassMatchFailMessage(node);
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+        {
+            sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    if(startLocation >= sourceSize)
-    {
-        return makeFail(startLocation, "unexpected end of input", isRequiredForSuccess);
-    }
+    ruleResult__ = this->makeFail(startLocation__, "unexpected end of input", isRequiredForSuccess__);
+}
+else
+{
     bool matches = false;
 )";
-        auto elseString = "";
-        for(const auto &range : node->characterRanges.ranges)
-        {
-            if(range.min == range.max)
+            auto elseString = "";
+            for(const auto &range : node->characterRanges.ranges)
             {
-                sourceFile << R"(    )" << elseString << R"(if(source.get()[startLocation] == U')"
-                           << escapeChar(range.min) << R"(')
+                if(range.min == range.max)
+                {
+                    sourceFile << R"(    )" << elseString
+                               << R"(if(this->source.get()[startLocation__] == U')" << escapeChar(range.min)
+                               << R"(')
     {
         matches = true;
     }
 )";
+                }
+                else
+                {
+                    sourceFile << R"(    )" << elseString
+                               << R"(if(this->source.get()[startLocation__] >= U')" << escapeChar(range.min)
+                               << R"(' && this->source.get()[startLocation__] <= U')"
+                               << escapeChar(range.max) << R"(')
+    {
+        matches = true;
+    }
+)";
+                }
+                elseString = "else ";
+            }
+            if(node->inverted)
+            {
+                sourceFile << R"(    if(!matches))";
             }
             else
             {
-                sourceFile << R"(    )" << elseString << R"(if(source.get()[startLocation] >= U')"
-                           << escapeChar(range.min) << R"(' && source.get()[startLocation] <= U')"
-                           << escapeChar(range.max) << R"(')
-    {
-        matches = true;
-    }
-)";
+                sourceFile << R"(    if(matches))";
             }
-            elseString = "else ";
-        }
-        if(node->inverted)
-        {
-            sourceFile << R"(    if(!matches))";
-        }
-        else
-        {
-            sourceFile << R"(    if(matches))";
-        }
-        sourceFile << R"(
-        return makeSuccess(startLocation + 1, startLocation + 1);
-    return makeFail(startLocation, startLocation + 1, ")" << escapeString(matchFailMessage)
-                   << R"(", isRequiredForSuccess);
+            sourceFile << R"(
+        ruleResult__ = this->makeSuccess(startLocation__ + 1, startLocation__ + 1);
+    else
+        ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, ")" << escapeString(matchFailMessage)
+                       << R"(", isRequiredForSuccess__);
 }
 )";
+            break;
+        }
+        }
     }
     virtual void visitEOFTerminal(ast::EOFTerminal *node) override
     {
-        headerFile << "    RuleResult " << translateName(nonterminal->name, currentPartNumber)
-                   << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
-        sourceFile << R"(
-Parser::RuleResult Parser::)" << translateName(nonterminal->name, currentPartNumber)
-                   << R"((std::size_t startLocation, bool isRequiredForSuccess)
+        switch(state)
+        {
+        case State::EvaluateFunction:
+#warning finish
+            break;
+        case State::ParseFunction:
+            sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    if(startLocation >= sourceSize)
-    {
-        return makeSuccess(startLocation);
-    }
-    return makeFail(startLocation, startLocation, "expected end of file", isRequiredForSuccess);
+    ruleResult__ = this->makeSuccess(startLocation__);
+}
+else
+{
+    ruleResult__ = this->makeFail(startLocation__, startLocation__, "expected end of file", isRequiredForSuccess__);
 }
 )";
+            break;
+        }
     }
     virtual void visitCodeSnippet(ast::CodeSnippet *node) override
     {

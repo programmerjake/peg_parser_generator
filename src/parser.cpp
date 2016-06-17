@@ -462,7 +462,7 @@ struct Parser final
           arena(arena),
           errorHandler(errorHandler), voidType(), charType()
     {
-        voidType = createBuiltinType("void", "void");
+        voidType = createBuiltinType("void", "void", true);
         charType = createBuiltinType("char", "char32_t");
     }
     ast::Nonterminal *getNonterminal()
@@ -496,11 +496,11 @@ struct Parser final
         retval = arena.make<ast::Type>(token.location, std::move(code), token.value);
         return retval;
     }
-    ast::Type *createBuiltinType(std::string name, std::string code)
+    ast::Type *createBuiltinType(std::string name, std::string code, bool isVoid = false)
     {
         auto *&type = typeTable[name];
         assert(!type);
-        type = arena.make<ast::Type>(Location(tokenizer.currentLocation.source, 0), std::move(code), std::move(name));
+        type = arena.make<ast::Type>(Location(tokenizer.currentLocation.source, 0), std::move(code), std::move(name), isVoid);
         return type;
     }
     void next()
@@ -751,6 +751,7 @@ struct Parser final
             }
         }
     }
+    template <bool codeAllowed>
     ast::Expression *parsePrimaryExpression()
     {
         switch(token.type)
@@ -764,7 +765,7 @@ struct Parser final
                 next();
                 return retval;
             }
-            auto retval = parseExpression();
+            auto retval = parseExpression<codeAllowed>();
             if(token.type != Token::Type::RParen)
             {
                 errorHandler(ErrorLevel::FatalError, token.location, "missing )");
@@ -787,6 +788,10 @@ struct Parser final
                 }
                 else
                 {
+                    if(!codeAllowed)
+                    {
+                        errorHandler(ErrorLevel::Error, token.location, "variable not allowed inside !");
+                    }
                     retval->variableName = token.value;
                     next();
                 }
@@ -840,6 +845,10 @@ struct Parser final
                 }
                 else
                 {
+                    if(!codeAllowed)
+                    {
+                        errorHandler(ErrorLevel::Error, token.location, "variable not allowed inside !");
+                    }
                     retval->variableName = token.value;
                     next();
                 }
@@ -850,19 +859,23 @@ struct Parser final
         {
             auto ampLocation = token.location;
             next();
-            auto expression = parsePrimaryExpression();
+            auto expression = parsePrimaryExpression<codeAllowed>();
             return arena.make<ast::FollowedByPredicate>(ampLocation, expression);
         }
         case Token::Type::EMark:
         {
             auto emarkLocation = token.location;
             next();
-            auto expression = parsePrimaryExpression();
+            auto expression = parsePrimaryExpression<false>();
             return arena.make<ast::NotFollowedByPredicate>(emarkLocation, expression);
         }
         case Token::Type::CodeSnippet:
         {
             auto retval = arena.make<ast::CodeSnippet>(token.location, token.value);
+            if(!codeAllowed)
+            {
+                errorHandler(ErrorLevel::Error, token.location, "code not allowed inside !");
+            }
             next();
             return retval;
         }
@@ -871,9 +884,10 @@ struct Parser final
             return nullptr;
         }
     }
+    template <bool codeAllowed>
     ast::Expression *parseRepeatOptionalExpression()
     {
-        ast::Expression *retval = parsePrimaryExpression();
+        ast::Expression *retval = parsePrimaryExpression<codeAllowed>();
         while(true)
         {
             if(token.type == Token::Type::QMark)
@@ -898,9 +912,10 @@ struct Parser final
         }
         return retval;
     }
+    template <bool codeAllowed>
     ast::Expression *parseSequenceExpression()
     {
-        ast::Expression *retval = parseRepeatOptionalExpression();
+        ast::Expression *retval = parseRepeatOptionalExpression<codeAllowed>();
         while(true)
         {
             bool done = false;
@@ -932,19 +947,20 @@ struct Parser final
             if(done)
                 break;
             auto sequenceLocation = token.location;
-            ast::Expression *rhs = parseRepeatOptionalExpression();
+            ast::Expression *rhs = parseRepeatOptionalExpression<codeAllowed>();
             retval = arena.make<ast::Sequence>(std::move(sequenceLocation), retval, rhs);
         }
         return retval;
     }
+    template <bool codeAllowed>
     ast::Expression *parseExpression()
     {
-        ast::Expression *retval = parseSequenceExpression();
+        ast::Expression *retval = parseSequenceExpression<codeAllowed>();
         while(token.type == Token::Type::FSlash)
         {
             auto slashLocation = token.location;
             next();
-            ast::Expression *rhs = parseSequenceExpression();
+            ast::Expression *rhs = parseSequenceExpression<codeAllowed>();
             retval = arena.make<ast::OrderedChoice>(std::move(slashLocation), retval, rhs);
         }
         return retval;
@@ -983,7 +999,7 @@ struct Parser final
             return nullptr;
         }
         next();
-        retval->expression = parseExpression();
+        retval->expression = parseExpression<true>();
         if(token.type != Token::Type::Semicolon)
         {
             errorHandler(ErrorLevel::FatalError, token.location, "missing ;");
@@ -1083,17 +1099,11 @@ struct Parser final
                              "rule not defined");
             }
         }
-        for(bool done = false; !done;)
+        for(auto nonterminal : nonterminals)
         {
-            done = true;
-            for(auto nonterminal : nonterminals)
+            if(nonterminal->settings.caching)
             {
-                if(nonterminal->settings.caching)
-                {
-                    nonterminal->settings.caching = nonterminal->expression->defaultNeedsCaching();
-                    if(!nonterminal->settings.caching)
-                        done = false;
-                }
+                nonterminal->settings.caching = nonterminal->expression->defaultNeedsCaching();
             }
         }
         return arena.make<ast::Grammar>(std::move(grammarLocation), prologue, std::move(nonterminals));

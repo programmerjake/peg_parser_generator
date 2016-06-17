@@ -70,7 +70,7 @@ struct NonterminalExpression final : public Expression
     }
     virtual bool defaultNeedsCaching() override
     {
-        return value->settings.caching;
+        return false;
     }
 };
 }
