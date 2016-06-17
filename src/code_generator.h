@@ -33,6 +33,7 @@ struct CodeGenerator
     virtual void generateCode(const ast::Grammar *grammar) = 0;
     static std::unique_ptr<CodeGenerator> makeCPlusPlus11(std::ostream &sourceFile,
                                                           std::ostream &headerFile,
+                                                          std::string headerFileName,
                                                           std::string headerFileNameFromSourceFile,
                                                           std::string sourceFileName);
 

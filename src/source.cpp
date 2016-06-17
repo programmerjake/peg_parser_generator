@@ -93,11 +93,12 @@ const Source *Source::load(Arena &arena, ErrorHandler &errorHandler, std::string
     {
         void operator()(std::FILE *f) const
         {
-            if(f)
+            if(f && f != stdin)
                 std::fclose(f);
         }
     };
-    std::unique_ptr<FILE, FileDeleter> file(std::fopen(fileName.c_str(), "rb"));
+    std::unique_ptr<FILE, FileDeleter> file(fileName == "-" ? stdin :
+                                                              std::fopen(fileName.c_str(), "rb"));
     if(!file)
     {
         errorHandler(ErrorLevel::FatalError,

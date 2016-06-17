@@ -27,8 +27,7 @@
 #include "repetition.h"
 #include "sequence.h"
 #include "terminal.h"
-#include "code_snippet.h"
-#include "prologue.h"
+#include "code.h"
 #include <sstream>
 #include <cassert>
 
@@ -103,8 +102,10 @@ void DumpVisitor::visitGrammar(Grammar *node)
     indent();
     os << "Grammar" << std::endl;
     indentDepth++;
-    if(node->prologue)
-        node->prologue->visit(*this);
+    for(auto topLevelCodeSnippet : node->topLevelCodeSnippets)
+    {
+        topLevelCodeSnippet->visit(*this);
+    }
     for(auto nonterminal : node->nonterminals)
     {
         nonterminal->visit(*this);
@@ -238,7 +239,7 @@ void DumpVisitor::visitEOFTerminal(EOFTerminal *node)
     os << "EOFTerminal" << std::endl;
 }
 
-void DumpVisitor::visitCodeSnippet(CodeSnippet *node)
+void DumpVisitor::visitExpressionCodeSnippet(ExpressionCodeSnippet *node)
 {
     indent();
     os << "CodeSnippet code = '";
@@ -249,10 +250,23 @@ void DumpVisitor::visitCodeSnippet(CodeSnippet *node)
     os << "'" << std::endl;
 }
 
-void DumpVisitor::visitPrologue(Prologue *node)
+void DumpVisitor::visitTopLevelCodeSnippet(TopLevelCodeSnippet *node)
 {
     indent();
-    os << "Prologue code = '";
+    os << "TopLevelCodeSnippet kind = ";
+    switch(node->kind)
+    {
+    case TopLevelCodeSnippet::Kind::License:
+        os << "License";
+        break;
+    case TopLevelCodeSnippet::Kind::Header:
+        os << "Header";
+        break;
+    case TopLevelCodeSnippet::Kind::Source:
+        os << "Source";
+        break;
+    }
+    os << " code = '";
     for(auto ch : node->code)
     {
         os << escapeCharacter(ch);

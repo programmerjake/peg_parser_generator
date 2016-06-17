@@ -29,7 +29,7 @@
 #include "ast/repetition.h"
 #include "ast/sequence.h"
 #include "ast/terminal.h"
-#include "ast/code_snippet.h"
+#include "ast/code.h"
 #include "source.h"
 #include "location.h"
 #include <sstream>
@@ -42,6 +42,7 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     std::ostream &finalHeaderFile;
     std::ostringstream sourceFile;
     std::ostringstream headerFile;
+    std::string headerFileName;
     std::string headerFileNameFromSourceFile;
     std::string sourceFileName;
     const std::size_t indentSize = 4;
@@ -56,10 +57,12 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     State state = State::ParseFunction;
     CPlusPlus11(std::ostream &finalSourceFile,
                 std::ostream &finalHeaderFile,
+                std::string headerFileName,
                 std::string headerFileNameFromSourceFile,
                 std::string sourceFileName)
         : finalSourceFile(finalSourceFile),
           finalHeaderFile(finalHeaderFile),
+          headerFileName(std::move(headerFileName)),
           headerFileNameFromSourceFile(std::move(headerFileNameFromSourceFile)),
           sourceFileName(std::move(sourceFileName))
     {
@@ -344,7 +347,7 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
         while(depth-- > 0)
             os << ' ';
     }
-    void reindent(std::ostream &os, const std::string &source) const
+    void reindent(std::ostream &os, const std::string &source, const std::string &fileName) const
     {
         bool isAtStartOfLine = true;
         std::size_t indentDepth = 0;
@@ -424,8 +427,7 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
                     {
                         std::ostringstream ss;
                         lineNumber++;
-                        ss << "#line " << lineNumber << " \"" << escapeString(sourceFileName)
-                           << "\"\n";
+                        ss << "#line " << lineNumber << " \"" << escapeString(fileName) << "\"\n";
                         i++;
                         assert(i < source.size() && source[i] == '\n');
                         os << ss.str();
@@ -504,19 +506,38 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
         ss << "@" << size << ";";
         return ss.str();
     }
+    void writeCode(std::ostream &os, std::string code, Location location)
+    {
+        code.insert(0, location.getColumn() - 1, ' ');
+        os << R"(@s@0#line )" << location.getLine() << R"( ")"
+           << escapeString(location.source->fileName) << R"("
+)" << makeEscape(code.size()) << code << R"(
+@l
+@r)";
+    }
     virtual void generateCode(const ast::Grammar *grammar) override
     {
         auto guardMacroName = getGuardMacroName();
         sourceFile << R"(// automatically generated from )" << grammar->location.source->fileName
                    << R"(
-#include ")" << headerFileNameFromSourceFile << R"("
+)";
+        headerFile << R"(// automatically generated from )" << grammar->location.source->fileName
+                   << R"(
+)";
+        for(auto topLevelCodeSnippet : grammar->topLevelCodeSnippets)
+        {
+            if(topLevelCodeSnippet->kind == ast::TopLevelCodeSnippet::Kind::License)
+            {
+                writeCode(sourceFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
+                writeCode(headerFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
+            }
+        }
+        sourceFile << R"(#include ")" << headerFileNameFromSourceFile << R"("
 
 namespace parser
 {
 )";
-        headerFile << R"(// automatically generated from )" << grammar->location.source->fileName
-                   << R"(
-#ifndef )" << guardMacroName << R"(
+        headerFile << R"(#ifndef )" << guardMacroName << R"(
 #define )" << guardMacroName << R"(
 
 #include <utility>
@@ -528,7 +549,15 @@ namespace parser
 #include <vector>
 #include <list>
 #include <cassert>
-
+)";
+        for(auto topLevelCodeSnippet : grammar->topLevelCodeSnippets)
+        {
+            if(topLevelCodeSnippet->kind == ast::TopLevelCodeSnippet::Kind::Header)
+            {
+                writeCode(headerFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
+            }
+        }
+        headerFile << R"(
 namespace parser
 {
 class Parser final
@@ -682,8 +711,15 @@ public:
         headerFile << R"(@-
 private:
 )";
-        sourceFile
-            << R"(Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
+        for(auto topLevelCodeSnippet : grammar->topLevelCodeSnippets)
+        {
+            if(topLevelCodeSnippet->kind == ast::TopLevelCodeSnippet::Kind::Source)
+            {
+                writeCode(sourceFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
+            }
+        }
+        sourceFile << R"(
+Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
     : resultsPointers(sourceSize, nullptr),
     ``resultsChunks(),
     ``eofResults(),
@@ -833,6 +869,23 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
                 sourceFile << nonterminal->type->code << R"( returnValue__{};
 )";
             }
+            if(nonterminal->settings.caching)
+            {
+                sourceFile << R"(ruleResult__ = this->getResults(startLocation__).)"
+                           << makeResultVariableName(nonterminal->name) << R"(;
+if(ruleResult__.fail())
+)";
+                if(nonterminal->type->isVoid)
+                {
+                    sourceFile << R"(    return;
+)";
+                }
+                else
+                {
+                    sourceFile << R"(    return returnValue__;
+)";
+                }
+            }
             this->nonterminal = nonterminal;
             state = State::DeclareLocals;
             nonterminal->expression->visit(*this);
@@ -865,9 +918,8 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
 )";
         sourceFile << R"(}
 )";
-        reindent(finalHeaderFile, headerFile.str());
-        reindent(finalSourceFile, sourceFile.str());
-#warning finish
+        reindent(finalHeaderFile, headerFile.str(), headerFileName);
+        reindent(finalSourceFile, sourceFile.str(), sourceFileName);
     }
     virtual void visitEmpty(ast::Empty *node) override
     {
@@ -1234,7 +1286,7 @@ else
             break;
         }
     }
-    virtual void visitCodeSnippet(ast::CodeSnippet *node) override
+    virtual void visitExpressionCodeSnippet(ast::ExpressionCodeSnippet *node) override
     {
         switch(state)
         {
@@ -1252,28 +1304,24 @@ else
                 auto substitution = *iter;
                 switch(substitution.kind)
                 {
-                case ast::CodeSnippet::Substitution::Kind::ReturnValue:
+                case ast::ExpressionCodeSnippet::Substitution::Kind::ReturnValue:
                     code.insert(substitution.position, "returnValue__");
                     continue;
                 }
                 assert(false);
             }
-            code.insert(0, node->location.getColumn() - 1, ' ');
             sourceFile << R"({
-@s@0#line )" << node->location.getLine() << R"( ")" << escapeString(node->location.source->fileName)
-                       << R"("
-)" << makeEscape(code.size()) << code << R"(
-@l
-@r}
+)";
+            writeCode(sourceFile, std::move(code), node->location);
+            sourceFile << R"(}
 ruleResult__ = this->makeSuccess(startLocation__);
 )";
             break;
         }
         }
     }
-    virtual void visitPrologue(ast::Prologue *node) override
+    virtual void visitTopLevelCodeSnippet(ast::TopLevelCodeSnippet *node) override
     {
-#warning finish
     }
     virtual void visitType(ast::Type *node) override
     {
@@ -1283,11 +1331,13 @@ ruleResult__ = this->makeSuccess(startLocation__);
 std::unique_ptr<CodeGenerator> CodeGenerator::makeCPlusPlus11(
     std::ostream &sourceFile,
     std::ostream &headerFile,
+    std::string headerFileName,
     std::string headerFileNameFromSourceFile,
     std::string sourceFileName)
 {
     return std::unique_ptr<CodeGenerator>(new CPlusPlus11(sourceFile,
                                                           headerFile,
+                                                          std::move(headerFileName),
                                                           std::move(headerFileNameFromSourceFile),
                                                           std::move(sourceFileName)));
 }

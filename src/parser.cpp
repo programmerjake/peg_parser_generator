@@ -31,9 +31,8 @@
 #include "ast/repetition.h"
 #include "ast/sequence.h"
 #include "ast/terminal.h"
-#include "ast/code_snippet.h"
-#include "ast/prologue.h"
 #include "ast/type.h"
+#include "ast/code.h"
 #include "arena.h"
 #include "source.h"
 #include <cassert>
@@ -80,13 +79,14 @@ struct Parser final
             Identifier,
             EOFKeyword,
             TypedefKeyword,
+            CodeKeyword,
             CharacterClass,
             CodeSnippet,
         };
         Location location;
         Type type;
         std::string value;
-        std::vector<ast::CodeSnippet::Substitution> substitutions;
+        std::vector<ast::ExpressionCodeSnippet::Substitution> substitutions;
         Token() : location(), type(Type::EndOfFile), value(), substitutions()
         {
         }
@@ -97,7 +97,7 @@ struct Parser final
         Token(Location location,
               Type type,
               std::string value,
-              std::vector<ast::CodeSnippet::Substitution> substitutions)
+              std::vector<ast::ExpressionCodeSnippet::Substitution> substitutions)
             : location(std::move(location)),
               type(type),
               value(std::move(value)),
@@ -217,6 +217,10 @@ struct Parser final
                 {
                     type = Token::Type::TypedefKeyword;
                 }
+                else if(value == "code")
+                {
+                    type = Token::Type::CodeKeyword;
+                }
                 return Token(std::move(tokenLocation), type, std::move(value));
             }
             switch(peek)
@@ -293,15 +297,79 @@ struct Parser final
             }
             case '{':
             {
+                enum class IncludeState
+                {
+                    StartOfLine,
+                    GotPound,
+                    GotInclude,
+                    Other,
+                };
+                auto includeState = IncludeState::StartOfLine;
                 get();
                 tokenLocation = currentLocation;
                 std::string value;
                 std::size_t nestLevel = 1;
-                std::vector<ast::CodeSnippet::Substitution> substitutions;
+                std::vector<ast::ExpressionCodeSnippet::Substitution> substitutions;
                 while(peek != eof)
                 {
+                    while(peek == ' ' || peek == '\t')
+                    {
+                        value += static_cast<char>(get());
+                    }
+                    if(peek == '#' && includeState == IncludeState::StartOfLine)
+                    {
+                        value += static_cast<char>(get());
+                        includeState = IncludeState::GotPound;
+                        continue;
+                    }
+                    if(peek == 'i' && includeState == IncludeState::GotPound)
+                    {
+                        includeState = IncludeState::Other;
+                        value += static_cast<char>(get());
+                        if(peek != 'n')
+                            continue;
+                        value += static_cast<char>(get());
+                        if(peek != 'c')
+                            continue;
+                        value += static_cast<char>(get());
+                        if(peek != 'l')
+                            continue;
+                        value += static_cast<char>(get());
+                        if(peek != 'u')
+                            continue;
+                        value += static_cast<char>(get());
+                        if(peek != 'd')
+                            continue;
+                        value += static_cast<char>(get());
+                        if(peek != 'e')
+                            continue;
+                        value += static_cast<char>(get());
+                        includeState = IncludeState::GotInclude;
+                        continue;
+                    }
+                    if((peek == '<' || peek == '\"') && includeState == IncludeState::GotInclude)
+                    {
+                        includeState = IncludeState::Other;
+                        auto closingCharacter = peek == '<' ? '>' : peek;
+                        value += static_cast<char>(get());
+                        while(peek != closingCharacter && peek != eof && peek != '\r'
+                              && peek != '\n')
+                        {
+                            value += static_cast<char>(get());
+                        }
+                        if(peek != closingCharacter)
+                        {
+                            errorHandler(ErrorLevel::FatalError,
+                                         tokenLocation,
+                                         std::string("#include missing closing ")
+                                             + static_cast<char>(closingCharacter));
+                            return Token();
+                        }
+                        value += static_cast<char>(get());
+                    }
                     if(peek == 'R')
                     {
+                        includeState = IncludeState::Other;
                         value += static_cast<char>(get());
                         if(peek != '\"')
                             continue;
@@ -354,6 +422,7 @@ struct Parser final
                     }
                     if(peek == '\'' || peek == '\"')
                     {
+                        includeState = IncludeState::Other;
                         auto seperatorCharacter = peek;
                         value += static_cast<char>(get());
                         while(peek != seperatorCharacter && peek != eof && peek != '\r'
@@ -384,12 +453,14 @@ struct Parser final
                     }
                     if(peek == '{')
                     {
+                        includeState = IncludeState::Other;
                         nestLevel++;
                         value += static_cast<char>(get());
                         continue;
                     }
                     if(peek == '}')
                     {
+                        includeState = IncludeState::Other;
                         if(--nestLevel == 0)
                             break;
                         value += static_cast<char>(get());
@@ -397,11 +468,13 @@ struct Parser final
                     }
                     if(peek == '$')
                     {
+                        includeState = IncludeState::Other;
                         get();
                         if(peek == '$')
                         {
                             substitutions.emplace_back(
-                                ast::CodeSnippet::Substitution::Kind::ReturnValue, value.size());
+                                ast::ExpressionCodeSnippet::Substitution::Kind::ReturnValue,
+                                value.size());
                             get();
                         }
                         else
@@ -413,15 +486,74 @@ struct Parser final
                         }
                         continue;
                     }
+                    if(peek == '/')
+                    {
+                        value += static_cast<char>(get());
+                        if(peek == '/')
+                        {
+                            while(peek != eof && peek != '\r' && peek != '\n')
+                            {
+                                value += static_cast<char>(get());
+                            }
+                            continue;
+                        }
+                        if(peek == '*')
+                        {
+                            value += static_cast<char>(get());
+                            while(peek != eof)
+                            {
+                                if(peek == '*')
+                                {
+                                    while(peek == '*')
+                                    {
+                                        value += static_cast<char>(get());
+                                    }
+                                    if(peek == '/')
+                                    {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                if(peek == '\r')
+                                {
+                                    get();
+                                    if(peek == '\n')
+                                        get();
+                                    value += '\n';
+                                }
+                                else
+                                {
+                                    value += static_cast<char>(get());
+                                }
+                            }
+                            if(peek != '/')
+                            {
+                                errorHandler(ErrorLevel::FatalError,
+                                             tokenLocation,
+                                             "comment missing closing */");
+                                return Token();
+                            }
+                            value += static_cast<char>(get());
+                            continue;
+                        }
+                        includeState = IncludeState::Other;
+                    }
                     if(peek == '\r')
                     {
+                        includeState = IncludeState::StartOfLine;
                         get();
                         if(peek == '\n')
                             get();
                         value += '\n';
                     }
+                    else if(peek == '\n')
+                    {
+                        includeState = IncludeState::StartOfLine;
+                        value += static_cast<char>(get());
+                    }
                     else
                     {
+                        includeState = IncludeState::Other;
                         value += static_cast<char>(get());
                     }
                 }
@@ -945,8 +1077,8 @@ struct Parser final
         }
         case Token::Type::CodeSnippet:
         {
-            auto retval =
-                arena.make<ast::CodeSnippet>(token.location, token.value, token.substitutions);
+            auto retval = arena.make<ast::ExpressionCodeSnippet>(
+                token.location, token.value, token.substitutions);
             if(!codeAllowed)
             {
                 errorHandler(ErrorLevel::Error, token.location, "code not allowed inside !");
@@ -1004,6 +1136,7 @@ struct Parser final
             case Token::Type::Equal:
             case Token::Type::RParen:
             case Token::Type::TypedefKeyword:
+            case Token::Type::CodeKeyword:
                 done = true;
                 break;
             case Token::Type::QMark:
@@ -1142,25 +1275,66 @@ struct Parser final
         }
         next();
     }
+    ast::TopLevelCodeSnippet *parseTopLevelCodeSnippet()
+    {
+        assert(token.type == Token::Type::CodeKeyword);
+        next();
+        ast::TopLevelCodeSnippet::Kind kind = ast::TopLevelCodeSnippet::Kind::Header;
+        if(token.type != Token::Type::Identifier)
+        {
+            errorHandler(ErrorLevel::Error, token.location, "missing code kind");
+        }
+        else
+        {
+            if(token.value == "license")
+            {
+                kind = ast::TopLevelCodeSnippet::Kind::License;
+            }
+            else if(token.value == "header")
+            {
+                kind = ast::TopLevelCodeSnippet::Kind::Header;
+            }
+            else if(token.value == "source")
+            {
+                kind = ast::TopLevelCodeSnippet::Kind::Source;
+            }
+            else
+            {
+                errorHandler(ErrorLevel::Error,
+                             token.location,
+                             "invalid code kind: expected license, header, or source");
+            }
+            next();
+        }
+        if(token.type != Token::Type::CodeSnippet)
+        {
+            errorHandler(ErrorLevel::FatalError, token.location, "missing code snippet");
+            return nullptr;
+        }
+        if(!token.substitutions.empty())
+        {
+            errorHandler(ErrorLevel::Error,
+                         token.location,
+                         "code substitutions not allowed in top-level code");
+        }
+        auto retval = arena.make<ast::TopLevelCodeSnippet>(token.location, kind, token.value);
+        next();
+        return retval;
+    }
     ast::Grammar *parseGrammar()
     {
         auto grammarLocation = token.location;
         std::vector<ast::Nonterminal *> nonterminals;
-        ast::Prologue *prologue = nullptr;
-        while(token.type == Token::Type::TypedefKeyword)
-        {
-            parseType();
-        }
-        if(token.type == Token::Type::CodeSnippet)
-        {
-            prologue = arena.make<ast::Prologue>(token.location, token.value);
-            next();
-        }
+        std::vector<ast::TopLevelCodeSnippet *> topLevelCodeSnippets;
         while(token.type != Token::Type::EndOfFile)
         {
             if(token.type == Token::Type::TypedefKeyword)
             {
                 parseType();
+            }
+            else if(token.type == Token::Type::CodeKeyword)
+            {
+                topLevelCodeSnippets.push_back(parseTopLevelCodeSnippet());
             }
             else
             {
@@ -1205,7 +1379,8 @@ struct Parser final
             {
                 if(nonterminal->settings.canAcceptEmptyString)
                 {
-                    nonterminal->settings.canAcceptEmptyString = nonterminal->expression->canAcceptEmptyString();
+                    nonterminal->settings.canAcceptEmptyString =
+                        nonterminal->expression->canAcceptEmptyString();
                     if(!nonterminal->settings.canAcceptEmptyString)
                         done = false;
                 }
@@ -1218,7 +1393,8 @@ struct Parser final
             {
                 if(nonterminal->settings.hasLeftRecursion)
                 {
-                    nonterminal->settings.hasLeftRecursion = nonterminal->expression->hasLeftRecursion();
+                    nonterminal->settings.hasLeftRecursion =
+                        nonterminal->expression->hasLeftRecursion();
                     if(!nonterminal->settings.hasLeftRecursion)
                         done = false;
                 }
@@ -1232,7 +1408,7 @@ struct Parser final
             }
         }
         return arena.make<ast::Grammar>(
-            std::move(grammarLocation), prologue, std::move(nonterminals));
+            std::move(grammarLocation), std::move(topLevelCodeSnippets), std::move(nonterminals));
     }
 };
 

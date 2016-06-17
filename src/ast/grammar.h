@@ -29,13 +29,17 @@
 
 namespace ast
 {
-struct Prologue;
+struct TopLevelCodeSnippet;
 struct Grammar final : public Node
 {
-    Prologue *prologue;
+    std::vector<TopLevelCodeSnippet *> topLevelCodeSnippets;
     std::vector<Nonterminal *> nonterminals;
-    Grammar(Location location, Prologue *prologue, std::vector<Nonterminal *> nonterminals)
-        : Node(std::move(location)), prologue(prologue), nonterminals(std::move(nonterminals))
+    Grammar(Location location,
+            std::vector<TopLevelCodeSnippet *> topLevelCodeSnippets,
+            std::vector<Nonterminal *> nonterminals)
+        : Node(std::move(location)),
+          topLevelCodeSnippets(std::move(topLevelCodeSnippets)),
+          nonterminals(std::move(nonterminals))
     {
     }
     virtual void visit(Visitor &visitor) override

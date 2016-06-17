@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef AST_CODE_SNIPPET_H_
-#define AST_CODE_SNIPPET_H_
+#ifndef AST_CODE_H_
+#define AST_CODE_H_
 
 #include "expression.h"
 #include "visitor.h"
@@ -28,7 +28,7 @@
 
 namespace ast
 {
-struct CodeSnippet final : public Expression
+struct ExpressionCodeSnippet final : public Expression
 {
     std::string code;
     struct Substitution final
@@ -47,7 +47,9 @@ struct CodeSnippet final : public Expression
         }
     };
     std::vector<Substitution> substitutions;
-    CodeSnippet(Location location, std::string code, std::vector<Substitution> substitutions)
+    ExpressionCodeSnippet(Location location,
+                          std::string code,
+                          std::vector<Substitution> substitutions)
         : Expression(std::move(location)),
           code(std::move(code)),
           substitutions(std::move(substitutions))
@@ -55,7 +57,7 @@ struct CodeSnippet final : public Expression
     }
     virtual void visit(Visitor &visitor) override
     {
-        visitor.visitCodeSnippet(this);
+        visitor.visitExpressionCodeSnippet(this);
     }
     virtual bool defaultNeedsCaching() override
     {
@@ -70,6 +72,25 @@ struct CodeSnippet final : public Expression
         return true;
     }
 };
+struct TopLevelCodeSnippet final : public Node
+{
+    enum class Kind
+    {
+        License,
+        Header,
+        Source,
+    };
+    Kind kind;
+    std::string code;
+    TopLevelCodeSnippet(Location location, Kind kind, std::string code)
+        : Node(std::move(location)), kind(kind), code(std::move(code))
+    {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTopLevelCodeSnippet(this);
+    }
+};
 }
 
-#endif /* AST_CODE_SNIPPET_H_ */
+#endif /* AST_CODE_H_ */

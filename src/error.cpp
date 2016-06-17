@@ -27,7 +27,8 @@ void DefaultErrorHandler::handleMessage(ErrorLevel errorLevel,
                                         const Location &location,
                                         const std::string &message)
 {
-    std::cerr << location << ": ";
+    if(location)
+        std::cerr << location << ": ";
     switch(errorLevel)
     {
     case ErrorLevel::Info:
