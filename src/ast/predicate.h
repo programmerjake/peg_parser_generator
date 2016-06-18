@@ -78,9 +78,15 @@ struct NotFollowedByPredicate final : public Expression
     }
 };
 
+struct ExpressionCodeSnippet;
+
 struct CustomPredicate final : public Expression
 {
-    using Expression::Expression;
+    ExpressionCodeSnippet *codeSnippet;
+    CustomPredicate(Location location, ExpressionCodeSnippet *codeSnippet)
+        : Expression(std::move(location)), codeSnippet(codeSnippet)
+    {
+    }
     virtual void visit(Visitor &visitor) override
     {
         visitor.visitCustomPredicate(this);

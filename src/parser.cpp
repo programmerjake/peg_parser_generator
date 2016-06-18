@@ -477,6 +477,13 @@ struct Parser final
                                 value.size());
                             get();
                         }
+                        else if(peek == '?')
+                        {
+                            substitutions.emplace_back(
+                                ast::ExpressionCodeSnippet::Substitution::Kind::PredicateReturnValue,
+                                value.size());
+                            get();
+                        }
                         else
                         {
                             errorHandler(ErrorLevel::Warning,
@@ -1065,7 +1072,14 @@ struct Parser final
         {
             auto ampLocation = token.location;
             next();
+            bool isCustomPredicate = token.type == Token::Type::CodeSnippet;
             auto expression = parsePrimaryExpression<codeAllowed>();
+            if(isCustomPredicate)
+            {
+                assert(dynamic_cast<ast::ExpressionCodeSnippet *>(expression));
+                auto codeSnippet = static_cast<ast::ExpressionCodeSnippet *>(expression);
+                return arena.make<ast::CustomPredicate>(ampLocation, codeSnippet);
+            }
             return arena.make<ast::FollowedByPredicate>(ampLocation, expression);
         }
         case Token::Type::EMark:

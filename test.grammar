@@ -33,8 +33,18 @@ code source {
 }
 
 typedef std::string string;
+typedef unsigned unsigned;
 
 digit = [0-9];
+
+hexDigit = [0-9a-fA-F];
+
+digitValue:unsigned = [0-9]:digit {$$ = digit - U'0';}
+                    / [a-z]:lower {$$ = lower - U'a' + 10;}
+                    / [A-Z]:upper {$$ = upper - U'A' + 10;}
+                    ;
+
+hexDigitValue:unsigned = &hexDigit digitValue:value {$$ = value;};
 
 letter = [a-zA-Z];
 
@@ -42,17 +52,57 @@ wsChar = [ \t\r\n];
 
 lineComment = "//" [^\r\n]*;
 
-blockComment = "/*" ([^/*] / "*"+[^/])* "*/";
+blockComment = "/*" (!"*/" [^])* "*/";
 
 ws = (wsChar / lineComment / blockComment)*;
 
-identifierStart:char = letter:letter {$$ = letter;} / "_" {$$ = '_';};
+unicodeEscape:char = "\\u"
+                           (
+                               hexDigitValue:digit0
+                               hexDigitValue:digit1
+                               hexDigitValue:digit2
+                               hexDigitValue:digit3
+                               {$$ = 0x1000 * digit0 + 0x100 * digit1 + 0x10 * digit2 + digit3;}
+                           /
+                               "{"
+                               {$$ = 0;}
+                               (
+                                   hexDigitValue:digit
+                                   &{
+                                       $$ = $$ * 0x10 + digit;
+                                       if($$ > 0x10FFFFUL) 
+                                           $? = "unicode escape is too big";
+                                   }
+                               )+
+                               "}"
+                           );
 
-identifierContinue:char = identifierStart:idStart {$$ = idStart;} / digit:digit {$$ = digit;};
+identifierStart:char = letter:letter {$$ = letter;}
+                     / "_" {$$ = '_';}
+                     / unicodeEscape:escapeValue
+                       &{
+                           $$ = escapeValue;
+                           if(($$ < 'a' || $$ > 'z') &&
+                              ($$ < 'A' || $$ > 'Z') &&
+                              $$ != '_')
+                               $? = "unicode escape does not make an identifier start";
+                       };
 
-newKeyword = "new" !identifierContinue ws;
+identifierContinue:char = identifierStart:idStart {$$ = idStart;}
+                        / digit:digit {$$ = digit;}
+                        / unicodeEscape:escapeValue
+                        &{
+                            $$ = escapeValue;
+                            if(($$ < 'a' || $$ > 'z') &&
+                               ($$ < 'A' || $$ > 'Z') &&
+                               ($$ < '0' || $$ > '9') &&
+                               $$ != '_')
+                                $? = "unicode escape does not make an identifier continue";
+                        };
 
-voidKeyword = "void" !identifierContinue ws;
+newKeyword = "new" !"\\" !identifierContinue ws;
+
+voidKeyword = "void" !"\\" !identifierContinue ws;
 
 keyword = newKeyword
         / voidKeyword;

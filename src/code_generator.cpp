@@ -50,11 +50,11 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     const ast::Nonterminal *nonterminal = nullptr;
     enum class State
     {
-        ParseFunction,
         DeclareLocals,
-        EvaluateFunction,
+        ParseAndEvaluateFunction,
     };
-    State state = State::ParseFunction;
+    State state = State::ParseAndEvaluateFunction;
+    bool needsIsRequiredForSuccess = false;
     CPlusPlus11(std::ostream &finalSourceFile,
                 std::ostream &finalHeaderFile,
                 std::string headerFileName,
@@ -307,10 +307,6 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     static std::string makeInternalParseFunctionName(std::string name)
     {
         return translateName("internalParse", std::move(name), "");
-    }
-    static std::string makeInternalEvaluateFunctionName(std::string name)
-    {
-        return translateName("internalEvaluate", std::move(name), "");
     }
     std::string getGuardMacroName() const
     {
@@ -818,50 +814,32 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
 )";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
-            headerFile << "    RuleResult " << makeInternalParseFunctionName(nonterminal->name)
-                       << "(std::size_t startLocation, bool isRequiredForSuccess);\n";
             headerFile << "    " << nonterminal->type->code << " "
-                       << makeInternalEvaluateFunctionName(nonterminal->name)
-                       << "(std::size_t startLocation, RuleResult &ruleResult);\n";
+                       << makeInternalParseFunctionName(nonterminal->name)
+                       << "(std::size_t startLocation, RuleResult &ruleResult, bool "
+                          "isRequiredForSuccess);\n";
             sourceFile << R"(
 )" << nonterminal->type->code << R"( Parser::)" << makeParseFunctionName(nonterminal->name) << R"(()
 {
-    auto result = )" << makeInternalParseFunctionName(nonterminal->name) << R"((0, true);
+    RuleResult result;
+    )" << (nonterminal->type->isVoid ? "" : "auto retval = ")
+                       << makeInternalParseFunctionName(nonterminal->name) << R"((0, result, true);
+    assert(!result.empty());
     if(result.fail())
         throw ParseError(errorLocation, errorMessage);
-    )" << (nonterminal->type->isVoid ? "" : "return ")
-                       << makeInternalEvaluateFunctionName(nonterminal->name) << R"((0, result);
-}
+)";
+            if(!nonterminal->type->isVoid)
+            {
+                sourceFile << R"(    return retval;
+)";
+            }
+            sourceFile << R"(}
 
 )";
-            sourceFile << R"(Parser::RuleResult Parser::)"
-                       << makeInternalParseFunctionName(nonterminal->name)
-                       << R"((std::size_t startLocation__, bool isRequiredForSuccess__)
-{
-)";
-            if(nonterminal->settings.caching)
-            {
-                sourceFile << R"(    auto &ruleResult__ = this->getResults(startLocation__).)"
-                           << makeResultVariableName(nonterminal->name) << R"(;
-    if(!ruleResult__.empty())
-        return ruleResult__;
-@+)";
-            }
-            else
-            {
-                sourceFile << R"(    Parser::RuleResult ruleResult__;
-@+)";
-            }
-            this->nonterminal = nonterminal;
-            state = State::ParseFunction;
-            nonterminal->expression->visit(*this);
-            sourceFile << R"(@_return ruleResult__;
-}
-
-)";
-            sourceFile << nonterminal->type->code << R"( Parser::)"
-                       << makeInternalEvaluateFunctionName(nonterminal->name)
-                       << R"((std::size_t startLocation__, RuleResult &ruleResult__)
+            sourceFile
+                << nonterminal->type->code << R"( Parser::)"
+                << makeInternalParseFunctionName(nonterminal->name)
+                << R"((std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
 {
 @+)";
             if(!nonterminal->type->isVoid)
@@ -869,28 +847,45 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
                 sourceFile << nonterminal->type->code << R"( returnValue__{};
 )";
             }
+            this->nonterminal = nonterminal;
+            needsIsRequiredForSuccess = false;
+            state = State::DeclareLocals;
+            nonterminal->expression->visit(*this);
             if(nonterminal->settings.caching)
             {
-                sourceFile << R"(ruleResult__ = this->getResults(startLocation__).)"
+                needsIsRequiredForSuccess = true;
+                sourceFile << R"(auto &ruleResult__ = this->getResults(startLocation__).)"
                            << makeResultVariableName(nonterminal->name) << R"(;
-if(ruleResult__.fail())
+if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
+{
+    ruleResultOut__ = ruleResult__;
 )";
                 if(nonterminal->type->isVoid)
                 {
                     sourceFile << R"(    return;
+}
 )";
                 }
                 else
                 {
                     sourceFile << R"(    return returnValue__;
+}
 )";
                 }
             }
+            else
+            {
+                sourceFile << R"(Parser::RuleResult ruleResult__;
+)";
+            }
             this->nonterminal = nonterminal;
-            state = State::DeclareLocals;
+            state = State::ParseAndEvaluateFunction;
             nonterminal->expression->visit(*this);
-            state = State::EvaluateFunction;
-            nonterminal->expression->visit(*this);
+            if(!needsIsRequiredForSuccess)
+            {
+                sourceFile << R"(static_cast<void>(isRequiredForSuccess__);
+)";
+            }
             if(nonterminal->type->name == "char")
             {
                 if(auto characterClass =
@@ -898,11 +893,14 @@ if(ruleResult__.fail())
                 {
                     if(characterClass->variableName.empty())
                     {
-                        sourceFile << R"(returnValue__ = this->source.get()[startLocation__];
+                        sourceFile << R"(if(ruleResultOut__.success())
+    returnValue__ = this->source.get()[startLocation__];
 )";
                     }
                 }
             }
+            sourceFile << R"(ruleResultOut__ = ruleResult__;
+)";
             if(!nonterminal->type->isVoid)
             {
                 sourceFile << R"(return returnValue__;
@@ -927,8 +925,7 @@ if(ruleResult__.fail())
         {
         case State::DeclareLocals:
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
     )";
             break;
@@ -953,19 +950,17 @@ if(ruleResult__.fail())
 )";
             }
             break;
-        case State::EvaluateFunction:
+        case State::ParseAndEvaluateFunction:
+            sourceFile << R"(ruleResult__ = Parser::RuleResult();
+)";
             if(!node->variableName.empty())
             {
                 sourceFile << node->variableName << R"( = )";
             }
-            sourceFile << R"(this->)" << makeInternalEvaluateFunctionName(node->value->name)
-                       << R"((startLocation__, ruleResult__);
-)";
-            break;
-        case State::ParseFunction:
-            sourceFile << R"(ruleResult__ = this->)"
-                       << makeInternalParseFunctionName(node->value->name)
-                       << R"((startLocation__, isRequiredForSuccess__);
+            needsIsRequiredForSuccess = true;
+            sourceFile << R"(this->)" << makeInternalParseFunctionName(node->value->name)
+                       << R"((startLocation__, ruleResult__, isRequiredForSuccess__);
+assert(!ruleResult__.empty());
 )";
             break;
         }
@@ -978,8 +973,7 @@ if(ruleResult__.fail())
             node->first->visit(*this);
             node->second->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             node->first->visit(*this);
             sourceFile << R"(if(ruleResult__.fail())
 {
@@ -1005,8 +999,7 @@ if(ruleResult__.fail())
         case State::DeclareLocals:
             node->expression->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
     ruleResult__.location = startLocation__;
@@ -1021,15 +1014,8 @@ if(ruleResult__.fail())
         case State::DeclareLocals:
             node->expression->visit(*this);
             break;
-        case State::EvaluateFunction:
-            node->expression->visit(*this);
-            sourceFile << R"(if(ruleResult__.success())
-    ruleResult__ = this->makeFail(startLocation__, "not allowed here", false);
-else
-    ruleResult__ = this->makeSuccess(startLocation__);
-)";
-            break;
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
+            needsIsRequiredForSuccess = true;
             sourceFile << R"(isRequiredForSuccess__ = !isRequiredForSuccess__;
 )";
             node->expression->visit(*this);
@@ -1044,7 +1030,23 @@ else
     }
     virtual void visitCustomPredicate(ast::CustomPredicate *node) override
     {
-#warning finish
+        switch(state)
+        {
+        case State::DeclareLocals:
+            node->codeSnippet->visit(*this);
+            break;
+        case State::ParseAndEvaluateFunction:
+            sourceFile << R"({
+    const char *predicateReturnValue__ = nullptr;
+@+)";
+            node->codeSnippet->visit(*this);
+            needsIsRequiredForSuccess = true;
+            sourceFile << R"(@_if(predicateReturnValue__ != nullptr)
+        ruleResult__ = this->makeFail(startLocation__, predicateReturnValue__, isRequiredForSuccess__);
+}
+)";
+            break;
+        }
     }
     virtual void visitGreedyRepetition(ast::GreedyRepetition *node) override
     {
@@ -1053,8 +1055,7 @@ else
         case State::DeclareLocals:
             node->expression->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
 {
     auto savedStartLocation__ = startLocation__;
@@ -1085,8 +1086,7 @@ else
         case State::DeclareLocals:
             node->expression->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
 {
@@ -1118,8 +1118,7 @@ else
         case State::DeclareLocals:
             node->expression->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             node->expression->visit(*this);
             sourceFile << R"(if(ruleResult__.fail())
     ruleResult__ = this->makeSuccess(startLocation__);
@@ -1135,8 +1134,7 @@ else
             node->first->visit(*this);
             node->second->visit(*this);
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
             node->first->visit(*this);
             sourceFile << R"(if(ruleResult__.success())
 {
@@ -1156,14 +1154,12 @@ else
         {
         case State::DeclareLocals:
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
+            needsIsRequiredForSuccess = true;
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
     ruleResult__ = this->makeFail(startLocation__, "missing )"
-                       << escapeString(getCharName(node->value)) << R"(", )"
-                       << (state == State::EvaluateFunction ? R"(false)" :
-                                                              R"(isRequiredForSuccess__)") << R"();
+                       << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess__);
 }
 else if(this->source.get()[startLocation__] == U')" << escapeChar(node->value) << R"(')
 {
@@ -1172,9 +1168,7 @@ else if(this->source.get()[startLocation__] == U')" << escapeChar(node->value) <
 else
 {
     ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, "missing )"
-                       << escapeString(getCharName(node->value)) << R"(", )"
-                       << (state == State::EvaluateFunction ? R"(false)" :
-                                                              R"(isRequiredForSuccess__)") << R"();
+                       << escapeString(getCharName(node->value)) << R"(", isRequiredForSuccess__);
 }
 )";
             break;
@@ -1192,14 +1186,12 @@ else
 )";
             }
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
         {
+            needsIsRequiredForSuccess = true;
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
-    ruleResult__ = this->makeFail(startLocation__, "unexpected end of input", )"
-                       << (state == State::EvaluateFunction ? R"(false)" :
-                                                              R"(isRequiredForSuccess__)") << R"();
+    ruleResult__ = this->makeFail(startLocation__, "unexpected end of input", isRequiredForSuccess__);
 }
 else
 {
@@ -1244,7 +1236,7 @@ else
     {
         ruleResult__ = this->makeSuccess(startLocation__ + 1, startLocation__ + 1);
 )";
-            if(state == State::EvaluateFunction && !node->variableName.empty())
+            if(state == State::ParseAndEvaluateFunction && !node->variableName.empty())
             {
                 sourceFile << R"(        )" << node->variableName
                            << R"( = this->source.get()[startLocation__];
@@ -1254,9 +1246,7 @@ else
     else
     {
         ruleResult__ = this->makeFail(startLocation__, startLocation__ + 1, ")"
-                       << escapeString(matchFailMessage) << R"(", )"
-                       << (state == State::EvaluateFunction ? R"(false)" :
-                                                              R"(isRequiredForSuccess__)") << R"();
+                       << escapeString(matchFailMessage) << R"(", isRequiredForSuccess__);
     }
 }
 )";
@@ -1270,17 +1260,15 @@ else
         {
         case State::DeclareLocals:
             break;
-        case State::EvaluateFunction:
-        case State::ParseFunction:
+        case State::ParseAndEvaluateFunction:
+            needsIsRequiredForSuccess = true;
             sourceFile << R"(if(startLocation__ >= this->sourceSize)
 {
     ruleResult__ = this->makeSuccess(startLocation__);
 }
 else
 {
-    ruleResult__ = this->makeFail(startLocation__, startLocation__, "expected end of file", )"
-                       << (state == State::EvaluateFunction ? R"(false)" :
-                                                              R"(isRequiredForSuccess__)") << R"();
+    ruleResult__ = this->makeFail(startLocation__, startLocation__, "expected end of file", isRequiredForSuccess__);
 }
 )";
             break;
@@ -1291,11 +1279,8 @@ else
         switch(state)
         {
         case State::DeclareLocals:
-        case State::ParseFunction:
-            sourceFile << R"(ruleResult__ = this->makeSuccess(startLocation__);
-)";
             break;
-        case State::EvaluateFunction:
+        case State::ParseAndEvaluateFunction:
         {
             std::string code = node->code;
             for(auto iter = node->substitutions.rbegin(); iter != node->substitutions.rend();
@@ -1306,6 +1291,9 @@ else
                 {
                 case ast::ExpressionCodeSnippet::Substitution::Kind::ReturnValue:
                     code.insert(substitution.position, "returnValue__");
+                    continue;
+                case ast::ExpressionCodeSnippet::Substitution::Kind::PredicateReturnValue:
+                    code.insert(substitution.position, "predicateReturnValue__");
                     continue;
                 }
                 assert(false);

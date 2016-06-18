@@ -35,7 +35,8 @@ struct ExpressionCodeSnippet final : public Expression
     {
         enum class Kind
         {
-            ReturnValue
+            ReturnValue,
+            PredicateReturnValue,
         };
         Kind kind;
         std::size_t position;
