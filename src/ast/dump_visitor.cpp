@@ -100,7 +100,14 @@ void DumpVisitor::visitEmpty(Empty *node)
 void DumpVisitor::visitGrammar(Grammar *node)
 {
     indent();
-    os << "Grammar" << std::endl;
+    os << "Grammar outputNamespace = \"";
+    auto seperator = "";
+    for(const auto &v : node->outputNamespace)
+    {
+        os << seperator << v;
+        seperator = "::";
+    }
+    os << "\"" << std::endl;
     indentDepth++;
     for(auto topLevelCodeSnippet : node->topLevelCodeSnippets)
     {
@@ -163,6 +170,9 @@ void DumpVisitor::visitCustomPredicate(CustomPredicate *node)
 {
     indent();
     os << "CustomPredicate" << std::endl;
+    indentDepth++;
+    node->codeSnippet->visit(*this);
+    indentDepth--;
 }
 
 void DumpVisitor::visitGreedyRepetition(GreedyRepetition *node)

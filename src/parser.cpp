@@ -79,6 +79,7 @@ struct Parser final
             Identifier,
             EOFKeyword,
             TypedefKeyword,
+            NamespaceKeyword,
             CodeKeyword,
             CharacterClass,
             CodeSnippet,
@@ -220,6 +221,10 @@ struct Parser final
                 else if(value == "code")
                 {
                     type = Token::Type::CodeKeyword;
+                }
+                else if(value == "namespace")
+                {
+                    type = Token::Type::NamespaceKeyword;
                 }
                 return Token(std::move(tokenLocation), type, std::move(value));
             }
@@ -479,9 +484,9 @@ struct Parser final
                         }
                         else if(peek == '?')
                         {
-                            substitutions.emplace_back(
-                                ast::ExpressionCodeSnippet::Substitution::Kind::PredicateReturnValue,
-                                value.size());
+                            substitutions.emplace_back(ast::ExpressionCodeSnippet::Substitution::
+                                                           Kind::PredicateReturnValue,
+                                                       value.size());
                             get();
                         }
                         else
@@ -1151,6 +1156,7 @@ struct Parser final
             case Token::Type::RParen:
             case Token::Type::TypedefKeyword:
             case Token::Type::CodeKeyword:
+            case Token::Type::NamespaceKeyword:
                 done = true;
                 break;
             case Token::Type::QMark:
@@ -1340,6 +1346,8 @@ struct Parser final
         auto grammarLocation = token.location;
         std::vector<ast::Nonterminal *> nonterminals;
         std::vector<ast::TopLevelCodeSnippet *> topLevelCodeSnippets;
+        std::vector<std::string> outputNamespace;
+        bool gotNamespace = false;
         while(token.type != Token::Type::EndOfFile)
         {
             if(token.type == Token::Type::TypedefKeyword)
@@ -1349,6 +1357,40 @@ struct Parser final
             else if(token.type == Token::Type::CodeKeyword)
             {
                 topLevelCodeSnippets.push_back(parseTopLevelCodeSnippet());
+            }
+            else if(token.type == Token::Type::NamespaceKeyword)
+            {
+                if(gotNamespace)
+                {
+                    errorHandler(
+                        ErrorLevel::Error, token.location, "multiple namespace statements");
+                }
+                gotNamespace = true;
+                next();
+                if(token.type != Token::Type::Identifier)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing identifier");
+                    return nullptr;
+                }
+                outputNamespace.assign(1, token.value);
+                next();
+                while(token.type == Token::Type::ColonColon)
+                {
+                    next();
+                    if(token.type != Token::Type::Identifier)
+                    {
+                        errorHandler(ErrorLevel::FatalError, token.location, "missing identifier");
+                        return nullptr;
+                    }
+                    outputNamespace.push_back(token.value);
+                    next();
+                }
+                if(token.type != Token::Type::Semicolon)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing ;");
+                    return nullptr;
+                }
+                next();
             }
             else
             {
@@ -1421,8 +1463,10 @@ struct Parser final
                 errorHandler(ErrorLevel::Error, nonterminal->location, "left-recursive rule");
             }
         }
-        return arena.make<ast::Grammar>(
-            std::move(grammarLocation), std::move(topLevelCodeSnippets), std::move(nonterminals));
+        return arena.make<ast::Grammar>(std::move(grammarLocation),
+                                        std::move(topLevelCodeSnippets),
+                                        std::move(nonterminals),
+                                        std::move(outputNamespace));
     }
 };
 

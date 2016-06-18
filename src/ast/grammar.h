@@ -34,12 +34,15 @@ struct Grammar final : public Node
 {
     std::vector<TopLevelCodeSnippet *> topLevelCodeSnippets;
     std::vector<Nonterminal *> nonterminals;
+    std::vector<std::string> outputNamespace;
     Grammar(Location location,
             std::vector<TopLevelCodeSnippet *> topLevelCodeSnippets,
-            std::vector<Nonterminal *> nonterminals)
+            std::vector<Nonterminal *> nonterminals,
+            std::vector<std::string> outputNamespace)
         : Node(std::move(location)),
           topLevelCodeSnippets(std::move(topLevelCodeSnippets)),
-          nonterminals(std::move(nonterminals))
+          nonterminals(std::move(nonterminals)),
+          outputNamespace(std::move(outputNamespace))
     {
     }
     virtual void visit(Visitor &visitor) override

@@ -32,6 +32,8 @@ code source {
 // this is in the source
 }
 
+namespace parser;
+
 typedef std::string string;
 typedef unsigned unsigned;
 

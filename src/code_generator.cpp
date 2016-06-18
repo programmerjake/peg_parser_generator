@@ -310,18 +310,18 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
     }
     std::string getGuardMacroName() const
     {
-        assert(!headerFileNameFromSourceFile.empty());
+        assert(!headerFileName.empty());
         std::string retval;
-        retval.reserve(3 + headerFileNameFromSourceFile.size());
+        retval.reserve(3 + headerFileName.size());
         std::size_t i = 0;
-        if(!std::isalpha(headerFileNameFromSourceFile[0]))
+        if(!std::isalpha(headerFileName[0]))
         {
             i++;
             retval = "HEADER_";
         }
-        for(; i < headerFileNameFromSourceFile.size(); i++)
+        for(; i < headerFileName.size(); i++)
         {
-            char ch = headerFileNameFromSourceFile[i];
+            char ch = headerFileName[i];
             if(std::isalnum(ch))
                 retval += std::toupper(ch);
             else
@@ -530,8 +530,6 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
         }
         sourceFile << R"(#include ")" << headerFileNameFromSourceFile << R"("
 
-namespace parser
-{
 )";
         headerFile << R"(#ifndef )" << guardMacroName << R"(
 #define )" << guardMacroName << R"(
@@ -554,9 +552,14 @@ namespace parser
             }
         }
         headerFile << R"(
-namespace parser
+)";
+        for(const auto &namespacePart : grammar->outputNamespace)
+        {
+            headerFile << R"(namespace )" << namespacePart << R"(
 {
-class Parser final
+)";
+        }
+        headerFile << R"(class Parser final
 {
     Parser(const Parser &) = delete;
     Parser &operator=(const Parser &) = delete;
@@ -714,8 +717,13 @@ private:
                 writeCode(sourceFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
             }
         }
-        sourceFile << R"(
-Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
+        for(const auto &namespacePart : grammar->outputNamespace)
+        {
+            sourceFile << R"(namespace )" << namespacePart << R"(
+{
+)";
+        }
+        sourceFile << R"(Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
     : resultsPointers(sourceSize, nullptr),
     ``resultsChunks(),
     ``eofResults(),
@@ -910,11 +918,17 @@ if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
 )";
         }
         headerFile << R"(};
-}
-
-#endif /* )" << guardMacroName << R"( */
 )";
-        sourceFile << R"(}
+        for(const auto &namespacePart : grammar->outputNamespace)
+        {
+            static_cast<void>(namespacePart);
+            sourceFile << R"(}
+)";
+            headerFile << R"(}
+)";
+        }
+        headerFile << R"(
+#endif /* )" << guardMacroName << R"( */
 )";
         reindent(finalHeaderFile, headerFile.str(), headerFileName);
         reindent(finalSourceFile, sourceFile.str(), sourceFileName);
