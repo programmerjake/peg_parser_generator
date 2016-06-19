@@ -150,13 +150,13 @@ struct TemplateArgumentVariableReference final : public TemplateArgument
     {
         assert(nonterminal);
         assert(index < nonterminal->templateArguments.size());
-        return nonterminal->templateArguments[index]->getName();
+        return nonterminal->templateArguments[index]->name;
     }
     virtual std::string getCode() const override
     {
         assert(nonterminal);
         assert(index < nonterminal->templateArguments.size());
-        return nonterminal->templateArguments[index]->getName();
+        return nonterminal->templateArguments[index]->name;
     }
     TemplateArgumentVariableReference(Location location,
                                       TemplateArgumentType *type,
