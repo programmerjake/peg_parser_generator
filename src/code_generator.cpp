@@ -723,7 +723,8 @@ private:
 {
 )";
         }
-        sourceFile << R"(Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
+        sourceFile
+            << R"(Parser::Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize)
     : resultsPointers(sourceSize, nullptr),
     ``resultsChunks(),
     ``eofResults(),
@@ -1327,6 +1328,28 @@ ruleResult__ = this->makeSuccess(startLocation__);
     }
     virtual void visitType(ast::Type *node) override
     {
+    }
+    virtual void visitTemplateArgumentType(ast::TemplateArgumentType *node) override
+    {
+#warning finish
+    }
+    virtual void visitTemplateArgumentValue(ast::TemplateArgumentTypeValue *node) override
+    {
+#warning finish
+    }
+    virtual void visitTemplateArgumentConstant(ast::TemplateArgumentConstant *node) override
+    {
+#warning finish
+    }
+    virtual void visitTemplateArgumentVariableDeclaration(
+        ast::TemplateVariableDeclaration *node) override
+    {
+#warning finish
+    }
+    virtual void visitTemplateArgumentVariableReference(
+        ast::TemplateArgumentVariableReference *node) override
+    {
+#warning finish
     }
 };
 

@@ -74,6 +74,8 @@ struct Parser final
             Equal,
             LParen,
             RParen,
+            LAngle,
+            RAngle,
             Amp,
             String,
             Identifier,
@@ -81,6 +83,8 @@ struct Parser final
             TypedefKeyword,
             NamespaceKeyword,
             CodeKeyword,
+            FalseKeyword,
+            TrueKeyword,
             CharacterClass,
             CodeSnippet,
         };
@@ -225,6 +229,14 @@ struct Parser final
                 else if(value == "namespace")
                 {
                     type = Token::Type::NamespaceKeyword;
+                }
+                else if(value == "false")
+                {
+                    type = Token::Type::FalseKeyword;
+                }
+                else if(value == "true")
+                {
+                    type = Token::Type::TrueKeyword;
                 }
                 return Token(std::move(tokenLocation), type, std::move(value));
             }
@@ -642,21 +654,52 @@ struct Parser final
                 get();
                 return Token(std::move(tokenLocation), Token::Type::Amp, "");
             }
+            case '<':
+            {
+                get();
+                return Token(std::move(tokenLocation), Token::Type::LAngle, "");
+            }
+            case '>':
+            {
+                get();
+                return Token(std::move(tokenLocation), Token::Type::RAngle, "");
+            }
             default:
                 errorHandler(ErrorLevel::FatalError, tokenLocation, "invalid character");
                 return Token(std::move(tokenLocation), Token::Type::EndOfFile, "");
             }
         }
     };
+    struct Variable final
+    {
+        enum class Kind
+        {
+            None,
+            Template,
+            RuleResult,
+        };
+        Kind kind;
+        ast::TemplateArgument *templateArgument;
+        Variable() : kind(Kind::None), templateArgument()
+        {
+        }
+        Variable(Kind kind, ast::TemplateArgument *templateArgument)
+            : kind(kind), templateArgument(templateArgument)
+        {
+        }
+    };
     std::unordered_map<std::string, ast::Nonterminal *> nonterminalTable;
     std::unordered_map<std::string, ast::Type *> typeTable;
-    std::unordered_set<std::string> variableNames;
+    std::unordered_map<std::string, Variable> variables;
     Tokenizer tokenizer;
     Token token;
     Arena &arena;
     ErrorHandler &errorHandler;
     ast::Type *voidType;
     ast::Type *charType;
+    ast::TemplateArgumentType *templateBoolType;
+    ast::TemplateArgumentTypeValue *templateFalseValue;
+    ast::TemplateArgumentTypeValue *templateTrueValue;
     std::vector<ast::NonterminalExpression *> nonterminalReferences;
     Parser(Arena &arena, ErrorHandler &errorHandler, const Source *source)
         : tokenizer(source),
@@ -668,6 +711,14 @@ struct Parser final
     {
         voidType = createBuiltinType("void", "void", true);
         charType = createBuiltinType("char", "char32_t");
+        templateBoolType = arena.make<ast::TemplateArgumentType>(
+            Location(source, 0), "bool", "bool", std::vector<ast::TemplateArgumentTypeValue *>());
+        templateFalseValue = arena.make<ast::TemplateArgumentTypeValue>(
+            Location(source, 0), "false", "false", templateBoolType);
+        templateTrueValue = arena.make<ast::TemplateArgumentTypeValue>(
+            Location(source, 0), "true", "true", templateBoolType);
+        templateBoolType->values.push_back(templateFalseValue);
+        templateBoolType->values.push_back(templateTrueValue);
     }
     ast::Nonterminal *getNonterminal()
     {

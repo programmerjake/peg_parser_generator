@@ -126,6 +126,10 @@ void DumpVisitor::visitNonterminal(Nonterminal *node)
     os << "Nonterminal name = \"" << node->name
        << "\" caching = " << (node->settings.caching ? "true" : "false") << std::endl;
     indentDepth++;
+    for(auto templateArgument : node->templateArguments)
+    {
+        templateArgument->visit(*this);
+    }
     node->type->visit(*this);
     node->expression->visit(*this);
     indentDepth--;
@@ -136,6 +140,12 @@ void DumpVisitor::visitNonterminalExpression(NonterminalExpression *node)
     indent();
     os << "NonterminalExpression Nonterminal->name = \"" << node->value->name
        << "\" variableName = \"" << node->variableName << "\"" << std::endl;
+    indentDepth++;
+    for(auto templateArgument : node->templateArguments)
+    {
+        templateArgument->visit(*this);
+    }
+    indentDepth--;
 }
 
 void DumpVisitor::visitOrderedChoice(OrderedChoice *node)
@@ -293,5 +303,48 @@ void DumpVisitor::visitType(Type *node)
         os << escapeCharacter(ch);
     }
     os << "'" << std::endl;
+}
+
+void DumpVisitor::visitTemplateArgumentType(TemplateArgumentType *node)
+{
+    indent();
+    os << "TemplateArgumentType name = " << node->name << " code = " << node->code << std::endl;
+    indentDepth++;
+    for(auto value : node->values)
+    {
+        value->visit(*this);
+    }
+    indentDepth--;
+}
+
+void DumpVisitor::visitTemplateArgumentValue(TemplateArgumentTypeValue *node)
+{
+    indent();
+    os << "TemplateArgumentTypeValue type->name = " << node->type->name << " name = " << node->name
+       << " code = " << node->code << std::endl;
+}
+
+void DumpVisitor::visitTemplateArgumentConstant(TemplateArgumentConstant *node)
+{
+    indent();
+    os << "TemplateArgumentConstant type->name = " << node->type->name << std::endl;
+    indentDepth++;
+    node->value->visit(*this);
+    indentDepth--;
+}
+
+void DumpVisitor::visitTemplateArgumentVariableDeclaration(
+    TemplateVariableDeclaration *node)
+{
+    indent();
+    os << "TemplateVariableDeclaration type->name = " << node->type->name
+       << " name = " << node->name << std::endl;
+}
+
+void DumpVisitor::visitTemplateArgumentVariableReference(TemplateArgumentVariableReference *node)
+{
+    indent();
+    os << "TemplateArgumentVariableReference nonterminal->name = " << node->nonterminal->name
+       << " index = " << node->index << std::endl;
 }
 }

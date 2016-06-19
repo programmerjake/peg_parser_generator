@@ -28,9 +28,87 @@
 #include "type.h"
 #include <utility>
 #include <string>
+#include <vector>
+#include <cassert>
 
 namespace ast
 {
+struct TemplateArgumentType;
+
+struct TemplateArgumentTypeValue final : public Node
+{
+    const std::string name;
+    const std::string code;
+    TemplateArgumentType *const type;
+    TemplateArgumentTypeValue(Location location,
+                          std::string name,
+                          std::string code,
+                          TemplateArgumentType *type)
+        : Node(std::move(location)), name(std::move(name)), code(std::move(code)), type(type)
+    {
+    }
+};
+
+struct TemplateArgumentType final : public Node
+{
+    const std::string name;
+    const std::string code;
+    std::vector<TemplateArgumentTypeValue *> values;
+    TemplateArgumentType(Location location,
+                         std::string name,
+                         std::string code,
+                         std::vector<TemplateArgumentTypeValue *> values)
+        : Node(std::move(location)),
+          name(std::move(name)),
+          code(std::move(code)),
+          values(std::move(values))
+    {
+    }
+};
+
+struct TemplateArgument : public Node
+{
+    TemplateArgumentType *type;
+    virtual std::string getName() const = 0;
+    virtual std::string getCode() const = 0;
+    TemplateArgument(Location location, TemplateArgumentType *type)
+        : Node(std::move(location)), type(type)
+    {
+        assert(type);
+    }
+};
+
+struct TemplateArgumentConstant final : public TemplateArgument
+{
+    TemplateArgumentTypeValue *value;
+    virtual std::string getName() const override
+    {
+        return value->name;
+    }
+    virtual std::string getCode() const override
+    {
+        return value->code;
+    }
+    TemplateArgumentConstant(Location location,
+                             TemplateArgumentType *type,
+                             TemplateArgumentTypeValue *value)
+        : TemplateArgument(std::move(location), type), value(value)
+    {
+    }
+};
+
+struct TemplateVariableDeclaration final : public Node
+{
+    TemplateArgumentType *type;
+    const std::string name;
+    TemplateVariableDeclaration(Location location,
+                                        TemplateArgumentType *type,
+                                        std::string name)
+        : Node(std::move(location)), type(type), name(std::move(name))
+    {
+    }
+};
+
 struct Nonterminal final : public Node
 {
     std::string name;
@@ -43,13 +121,19 @@ struct Nonterminal final : public Node
         bool canAcceptEmptyString = true;
     };
     Settings settings;
-    Nonterminal(
-        Location location, std::string name, Expression *expression, Type *type, Settings settings)
+    std::vector<TemplateVariableDeclaration *> templateArguments;
+    Nonterminal(Location location,
+                std::string name,
+                Expression *expression,
+                Type *type,
+                Settings settings,
+                std::vector<TemplateVariableDeclaration *> templateArguments)
         : Node(std::move(location)),
           name(std::move(name)),
           expression(expression),
           type(type),
-          settings(std::move(settings))
+          settings(std::move(settings)),
+          templateArguments(std::move(templateArguments))
     {
     }
     virtual void visit(Visitor &visitor) override
@@ -58,12 +142,44 @@ struct Nonterminal final : public Node
     }
 };
 
+struct TemplateArgumentVariableReference final : public TemplateArgument
+{
+    Nonterminal *nonterminal;
+    std::size_t index;
+    virtual std::string getName() const override
+    {
+        assert(nonterminal);
+        assert(index < nonterminal->templateArguments.size());
+        return nonterminal->templateArguments[index]->getName();
+    }
+    virtual std::string getCode() const override
+    {
+        assert(nonterminal);
+        assert(index < nonterminal->templateArguments.size());
+        return nonterminal->templateArguments[index]->getName();
+    }
+    TemplateArgumentVariableReference(Location location,
+                                      TemplateArgumentType *type,
+                                      Nonterminal *nonterminal,
+                                      std::size_t index)
+        : TemplateArgument(std::move(location), type), nonterminal(nonterminal), index(index)
+    {
+    }
+};
+
 struct NonterminalExpression final : public Expression
 {
     Nonterminal *value;
     std::string variableName;
-    NonterminalExpression(Location location, Nonterminal *value, std::string variableName)
-        : Expression(std::move(location)), value(value), variableName(std::move(variableName))
+    std::vector<TemplateArgument *> templateArguments;
+    NonterminalExpression(Location location,
+                          Nonterminal *value,
+                          std::string variableName,
+                          std::vector<TemplateArgument *> templateArguments)
+        : Expression(std::move(location)),
+          value(value),
+          variableName(std::move(variableName)),
+          templateArguments(std::move(templateArguments))
     {
     }
     virtual void visit(Visitor &visitor) override

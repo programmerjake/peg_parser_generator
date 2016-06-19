@@ -42,6 +42,11 @@ struct EOFTerminal;
 struct ExpressionCodeSnippet;
 struct TopLevelCodeSnippet;
 struct Type;
+struct TemplateArgumentType;
+struct TemplateArgumentTypeValue;
+struct TemplateArgumentConstant;
+struct TemplateVariableDeclaration;
+struct TemplateArgumentVariableReference;
 struct Visitor
 {
     virtual ~Visitor() = default;
@@ -63,6 +68,11 @@ struct Visitor
     virtual void visitExpressionCodeSnippet(ExpressionCodeSnippet *node) = 0;
     virtual void visitTopLevelCodeSnippet(TopLevelCodeSnippet *node) = 0;
     virtual void visitType(Type *node) = 0;
+    virtual void visitTemplateArgumentType(TemplateArgumentType *node) = 0;
+    virtual void visitTemplateArgumentValue(TemplateArgumentTypeValue *node) = 0;
+    virtual void visitTemplateArgumentConstant(TemplateArgumentConstant *node) = 0;
+    virtual void visitTemplateArgumentVariableDeclaration(TemplateVariableDeclaration *node) = 0;
+    virtual void visitTemplateArgumentVariableReference(TemplateArgumentVariableReference *node) = 0;
 };
 }
 

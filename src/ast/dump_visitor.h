@@ -65,6 +65,11 @@ public:
     virtual void visitExpressionCodeSnippet(ExpressionCodeSnippet *node) override;
     virtual void visitTopLevelCodeSnippet(TopLevelCodeSnippet *node) override;
     virtual void visitType(Type *node) override;
+    virtual void visitTemplateArgumentType(TemplateArgumentType *node) override;
+    virtual void visitTemplateArgumentValue(TemplateArgumentTypeValue *node) override;
+    virtual void visitTemplateArgumentConstant(TemplateArgumentConstant *node) override;
+    virtual void visitTemplateArgumentVariableDeclaration(TemplateVariableDeclaration *node) override;
+    virtual void visitTemplateArgumentVariableReference(TemplateArgumentVariableReference *node) override;
 };
 }
 
