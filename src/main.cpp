@@ -159,7 +159,7 @@ Options:
         }
         const Source *source = Source::load(arena, errorHandler, inputFile);
         ast::Grammar *grammar = parseGrammar(arena, errorHandler, source);
-        if(!errorHandler.anyErrors)
+        if(!errorHandler.hasAnyErrors())
         {
             std::ostringstream headerStream, sourceStream;
             CodeGenerator::makeCPlusPlus11(sourceStream,
@@ -211,7 +211,7 @@ Options:
     catch(FatalError &)
     {
     }
-    if(errorHandler.anyErrors)
+    if(errorHandler.hasAnyErrors())
         return 1;
     return 0;
 }

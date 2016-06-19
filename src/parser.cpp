@@ -1397,6 +1397,8 @@ struct Parser final
                 nonterminals.push_back(parseRule());
             }
         }
+        if(errorHandler.hasAnyErrors())
+            return nullptr;
         for(const auto &nameAndNonterminal : nonterminalTable)
         {
             if(!std::get<1>(nameAndNonterminal)->expression)
@@ -1406,16 +1408,18 @@ struct Parser final
                              "rule not defined");
             }
         }
+        if(errorHandler.hasAnyErrors())
+            return nullptr;
         for(auto nonterminal : nonterminals)
         {
-            if(nonterminal->settings.caching)
+            if(nonterminal->settings.caching && nonterminal->expression)
             {
                 nonterminal->settings.caching = nonterminal->expression->defaultNeedsCaching();
             }
         }
         for(auto nonterminalReference : nonterminalReferences)
         {
-            if(!nonterminalReference->variableName.empty()
+            if(!nonterminalReference->variableName.empty() && nonterminalReference->value->type
                && nonterminalReference->value->type->isVoid)
             {
                 errorHandler(ErrorLevel::Error,
@@ -1423,6 +1427,8 @@ struct Parser final
                              "can't create a void variable");
             }
         }
+        if(errorHandler.hasAnyErrors())
+            return nullptr;
         for(auto nonterminal : nonterminals)
         {
             nonterminal->settings.canAcceptEmptyString = true;
@@ -1433,7 +1439,7 @@ struct Parser final
             done = true;
             for(auto nonterminal : nonterminals)
             {
-                if(nonterminal->settings.canAcceptEmptyString)
+                if(nonterminal->settings.canAcceptEmptyString && nonterminal->expression)
                 {
                     nonterminal->settings.canAcceptEmptyString =
                         nonterminal->expression->canAcceptEmptyString();
@@ -1450,7 +1456,7 @@ struct Parser final
                 if(nonterminal->settings.hasLeftRecursion)
                 {
                     nonterminal->settings.hasLeftRecursion =
-                        nonterminal->expression->hasLeftRecursion();
+                        nonterminal->expression && nonterminal->expression->hasLeftRecursion();
                     if(!nonterminal->settings.hasLeftRecursion)
                         done = false;
                 }
@@ -1458,11 +1464,13 @@ struct Parser final
         }
         for(auto nonterminal : nonterminals)
         {
-            if(nonterminal->settings.hasLeftRecursion)
+            if(nonterminal->settings.hasLeftRecursion && nonterminal->expression)
             {
                 errorHandler(ErrorLevel::Error, nonterminal->location, "left-recursive rule");
             }
         }
+        if(errorHandler.hasAnyErrors())
+            return nullptr;
         return arena.make<ast::Grammar>(std::move(grammarLocation),
                                         std::move(topLevelCodeSnippets),
                                         std::move(nonterminals),

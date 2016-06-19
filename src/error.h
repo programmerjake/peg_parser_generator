@@ -53,6 +53,7 @@ protected:
                                const std::string &message) = 0;
 
 private:
+    bool anyErrors = false;
     static void writeToStreamHelper(std::ostream &os)
     {
     }
@@ -69,15 +70,27 @@ public:
         std::ostringstream os;
         writeToStreamHelper(os, std::forward<Args>(args)...);
         handleMessage(errorLevel, location, os.str());
-        if(errorLevel == ErrorLevel::FatalError)
+        switch(errorLevel)
+        {
+        case ErrorLevel::Error:
+            anyErrors = true;
+            break;
+        case ErrorLevel::FatalError:
+            anyErrors = true;
             throw FatalError();
+        case ErrorLevel::Info:
+        case ErrorLevel::Warning:
+            break;
+        }
+    }
+    bool hasAnyErrors() const
+    {
+        return anyErrors;
     }
 };
 
 struct DefaultErrorHandler final : public ErrorHandler
 {
-public:
-    bool anyErrors = false;
 protected:
     virtual void handleMessage(ErrorLevel errorLevel,
                                const Location &location,

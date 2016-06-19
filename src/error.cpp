@@ -38,11 +38,9 @@ void DefaultErrorHandler::handleMessage(ErrorLevel errorLevel,
         std::cerr << "warning";
         break;
     case ErrorLevel::Error:
-        anyErrors = true;
         std::cerr << "error";
         break;
     case ErrorLevel::FatalError:
-        anyErrors = true;
         std::cerr << "fatal error";
         break;
     }
