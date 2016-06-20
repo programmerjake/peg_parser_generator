@@ -23,6 +23,7 @@
 #include <vector>
 #include <algorithm>
 #include <random>
+#include <sstream>
 
 using namespace parser;
 
@@ -71,23 +72,28 @@ int main()
     return 0;
 }
 #else
-int main(int argc, char **argv)
+int main()
 {
     std::vector<std::size_t> lineStartingPositions;
     try
     {
+#if 0
+        std::istringstream inputStream("a+b;");
+#else
+        std::istream &inputStream = std::cin;
+#endif
         std::string input;
-        std::cin.exceptions(std::ios::badbit);
+        inputStream.exceptions(std::ios::badbit);
         while(true)
         {
-            int ch = std::cin.get();
+            int ch = inputStream.get();
             if(ch == std::char_traits<char>::eof())
                 break;
             if(ch == '\r')
             {
                 input += static_cast<char>(ch);
-                if(std::cin.peek() == '\n')
-                    input += static_cast<char>(std::cin.get());
+                if(inputStream.peek() == '\n')
+                    input += static_cast<char>(inputStream.get());
                 lineStartingPositions.push_back(input.size());
             }
             else if(ch == '\n')
@@ -100,7 +106,7 @@ int main(int argc, char **argv)
                 input += static_cast<char>(ch);
             }
         }
-        std::cout << Parser(input).parseGoal() << std::endl;
+        std::cout << Parser(input).parseGoal<true, true>() << std::endl;
     }
     catch(Parser::ParseError &e)
     {

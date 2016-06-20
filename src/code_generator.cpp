@@ -949,7 +949,7 @@ if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
                 {
                     if(characterClass->variableName.empty())
                     {
-                        sourceFile << R"(if(ruleResultOut__.success())
+                        sourceFile << R"(if(ruleResult__.success())
     returnValue__ = this->source.get()[startLocation__];
 )";
                     }
