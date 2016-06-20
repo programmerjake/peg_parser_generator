@@ -41,11 +41,15 @@ struct TemplateArgumentTypeValue final : public Node
     const std::string code;
     TemplateArgumentType *const type;
     TemplateArgumentTypeValue(Location location,
-                          std::string name,
-                          std::string code,
-                          TemplateArgumentType *type)
+                              std::string name,
+                              std::string code,
+                              TemplateArgumentType *type)
         : Node(std::move(location)), name(std::move(name)), code(std::move(code)), type(type)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTemplateArgumentTypeValue(this);
     }
 };
 
@@ -63,6 +67,10 @@ struct TemplateArgumentType final : public Node
           code(std::move(code)),
           values(std::move(values))
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTemplateArgumentType(this);
     }
 };
 
@@ -95,17 +103,23 @@ struct TemplateArgumentConstant final : public TemplateArgument
         : TemplateArgument(std::move(location), type), value(value)
     {
     }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTemplateArgumentConstant(this);
+    }
 };
 
 struct TemplateVariableDeclaration final : public Node
 {
     TemplateArgumentType *type;
     const std::string name;
-    TemplateVariableDeclaration(Location location,
-                                        TemplateArgumentType *type,
-                                        std::string name)
+    TemplateVariableDeclaration(Location location, TemplateArgumentType *type, std::string name)
         : Node(std::move(location)), type(type), name(std::move(name))
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTemplateVariableDeclaration(this);
     }
 };
 
@@ -144,40 +158,42 @@ struct Nonterminal final : public Node
 
 struct TemplateArgumentVariableReference final : public TemplateArgument
 {
-    Nonterminal *nonterminal;
-    std::size_t index;
+    TemplateVariableDeclaration *declaration;
     virtual std::string getName() const override
     {
-        assert(nonterminal);
-        assert(index < nonterminal->templateArguments.size());
-        return nonterminal->templateArguments[index]->name;
+        assert(declaration);
+        return declaration->name;
     }
     virtual std::string getCode() const override
     {
-        assert(nonterminal);
-        assert(index < nonterminal->templateArguments.size());
-        return nonterminal->templateArguments[index]->name;
+        return getName();
     }
     TemplateArgumentVariableReference(Location location,
                                       TemplateArgumentType *type,
-                                      Nonterminal *nonterminal,
-                                      std::size_t index)
-        : TemplateArgument(std::move(location), type), nonterminal(nonterminal), index(index)
+                                      TemplateVariableDeclaration *declaration)
+        : TemplateArgument(std::move(location), type), declaration(declaration)
     {
+    }
+    virtual void visit(Visitor &visitor) override
+    {
+        visitor.visitTemplateArgumentVariableReference(this);
     }
 };
 
 struct NonterminalExpression final : public Expression
 {
     Nonterminal *value;
+    Nonterminal *containingNonterminal;
     std::string variableName;
     std::vector<TemplateArgument *> templateArguments;
     NonterminalExpression(Location location,
                           Nonterminal *value,
+                          Nonterminal *containingNonterminal,
                           std::string variableName,
                           std::vector<TemplateArgument *> templateArguments)
         : Expression(std::move(location)),
           value(value),
+          containingNonterminal(containingNonterminal),
           variableName(std::move(variableName)),
           templateArguments(std::move(templateArguments))
     {

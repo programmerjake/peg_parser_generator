@@ -511,6 +511,23 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
 @l
 @r)";
     }
+    void writeTemplateDeclaration(
+        std::ostream &os,
+        const std::vector<ast::TemplateVariableDeclaration *> &templateArguments,
+        const char *indent = "")
+    {
+        if(templateArguments.empty())
+            return;
+        os << indent << "template <";
+        auto seperator = "";
+        for(auto templateArgument : templateArguments)
+        {
+            os << seperator;
+            seperator = ", ";
+            os << templateArgument->type->code << " " << templateArgument->name;
+        }
+        os << ">\n";
+    }
     virtual void generateCode(const ast::Grammar *grammar) override
     {
         auto guardMacroName = getGuardMacroName();
@@ -600,7 +617,14 @@ private:
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
             if(nonterminal->settings.caching)
-                headerFile << "RuleResult " << makeResultVariableName(nonterminal->name) << ";\n";
+            {
+                headerFile << "RuleResult " << makeResultVariableName(nonterminal->name);
+                for(auto templateArgument : nonterminal->templateArguments)
+                {
+                    headerFile << "[" << templateArgument->type->values.size() << "]";
+                }
+                headerFile << ";\n";
+            }
         }
         headerFile << R"(@_@-};
     struct ResultsChunk final
@@ -704,6 +728,7 @@ public:
 @+)";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
+            writeTemplateDeclaration(headerFile, nonterminal->templateArguments);
             headerFile << nonterminal->type->code << " " << makeParseFunctionName(nonterminal->name)
                        << "();\n";
         }
@@ -823,16 +848,32 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
 )";
         for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
         {
+            writeTemplateDeclaration(headerFile, nonterminal->templateArguments, "    ");
             headerFile << "    " << nonterminal->type->code << " "
                        << makeInternalParseFunctionName(nonterminal->name)
                        << "(std::size_t startLocation, RuleResult &ruleResult, bool "
                           "isRequiredForSuccess);\n";
             sourceFile << R"(
-)" << nonterminal->type->code << R"( Parser::)" << makeParseFunctionName(nonterminal->name) << R"(()
+)";
+            writeTemplateDeclaration(sourceFile, nonterminal->templateArguments);
+            sourceFile << nonterminal->type->code << R"( Parser::)"
+                       << makeParseFunctionName(nonterminal->name) << R"(()
 {
     RuleResult result;
     )" << (nonterminal->type->isVoid ? "" : "auto retval = ")
-                       << makeInternalParseFunctionName(nonterminal->name) << R"((0, result, true);
+                       << makeInternalParseFunctionName(nonterminal->name);
+            if(!nonterminal->templateArguments.empty())
+            {
+                sourceFile << "<";
+                auto seperator = "";
+                for(auto templateArgument : nonterminal->templateArguments)
+                {
+                    sourceFile << seperator << templateArgument->name;
+                    seperator = ", ";
+                }
+                sourceFile << ">";
+            }
+            sourceFile << R"((0, result, true);
     assert(!result.empty());
     if(result.fail())
         throw ParseError(errorLocation, errorMessage);
@@ -845,6 +886,7 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
             sourceFile << R"(}
 
 )";
+            writeTemplateDeclaration(sourceFile, nonterminal->templateArguments);
             sourceFile
                 << nonterminal->type->code << R"( Parser::)"
                 << makeInternalParseFunctionName(nonterminal->name)
@@ -864,7 +906,12 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
             {
                 needsIsRequiredForSuccess = true;
                 sourceFile << R"(auto &ruleResult__ = this->getResults(startLocation__).)"
-                           << makeResultVariableName(nonterminal->name) << R"(;
+                           << makeResultVariableName(nonterminal->name);
+                for(auto templateArgument : nonterminal->templateArguments)
+                {
+                    sourceFile << "[static_cast<std::size_t>(" << templateArgument->name << ")]";
+                }
+                sourceFile << R"(;
 if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
 {
     ruleResultOut__ = ruleResult__;
@@ -920,6 +967,71 @@ if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
         }
         headerFile << R"(};
 )";
+        bool wroteSeperatingLine = false;
+        std::vector<std::size_t> templateArgumentValueIndexes;
+        for(const ast::Nonterminal *nonterminal : grammar->nonterminals)
+        {
+            if(nonterminal->templateArguments.empty())
+                continue;
+            if(!wroteSeperatingLine)
+            {
+                sourceFile << "\n";
+                headerFile << "\n";
+                wroteSeperatingLine = true;
+            }
+            templateArgumentValueIndexes.assign(nonterminal->templateArguments.size(), 0);
+            for(bool done = false; !done;)
+            {
+                std::ostringstream parseFunctionStream, internalParseFunctionStream;
+                parseFunctionStream << "template " << nonterminal->type->code << " Parser::";
+                internalParseFunctionStream << "template " << nonterminal->type->code
+                                            << " Parser::";
+                parseFunctionStream << makeParseFunctionName(nonterminal->name);
+                internalParseFunctionStream << makeInternalParseFunctionName(nonterminal->name);
+                parseFunctionStream << "<";
+                internalParseFunctionStream << "<";
+                auto seperator = "";
+                for(std::size_t i = 0; i < nonterminal->templateArguments.size(); i++)
+                {
+                    assert(templateArgumentValueIndexes[i]
+                           < nonterminal->templateArguments[i]->type->values.size());
+                    parseFunctionStream << seperator
+                                        << nonterminal->templateArguments[i]
+                                               ->type->values[templateArgumentValueIndexes[i]]
+                                               ->code;
+                    internalParseFunctionStream
+                        << seperator
+                        << nonterminal->templateArguments[i]
+                               ->type->values[templateArgumentValueIndexes[i]]
+                               ->code;
+                    seperator = ", ";
+                }
+                parseFunctionStream << ">();\n";
+                internalParseFunctionStream << ">(std::size_t startLocation, RuleResult "
+                                               "&ruleResultOut, bool isRequiredForSuccess);\n";
+                headerFile << "extern " << parseFunctionStream.str()
+                           << "extern " << internalParseFunctionStream.str();
+                sourceFile << parseFunctionStream.str() << internalParseFunctionStream.str();
+                for(std::size_t i = nonterminal->templateArguments.size(); i > 0; i--)
+                {
+                    templateArgumentValueIndexes[i - 1]++;
+                    if(templateArgumentValueIndexes[i - 1]
+                       >= nonterminal->templateArguments[i - 1]->type->values.size())
+                    {
+                        templateArgumentValueIndexes[i - 1] = 0;
+                        if(i - 1 == 0)
+                        {
+                            done = true;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+        }
         for(const auto &namespacePart : grammar->outputNamespace)
         {
             static_cast<void>(namespacePart);
@@ -973,8 +1085,20 @@ if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
                 sourceFile << node->variableName << R"( = )";
             }
             needsIsRequiredForSuccess = true;
-            sourceFile << R"(this->)" << makeInternalParseFunctionName(node->value->name)
-                       << R"((startLocation__, ruleResult__, isRequiredForSuccess__);
+            sourceFile << R"(this->)" << makeInternalParseFunctionName(node->value->name);
+            if(!node->templateArguments.empty())
+            {
+                sourceFile << "<";
+                auto seperator = "";
+                for(auto templateArgument : node->templateArguments)
+                {
+                    sourceFile << seperator;
+                    seperator = ", ";
+                    sourceFile << templateArgument->getCode();
+                }
+                sourceFile << ">";
+            }
+            sourceFile << R"((startLocation__, ruleResult__, isRequiredForSuccess__);
 assert(!ruleResult__.empty());
 )";
             break;
@@ -1331,25 +1455,19 @@ ruleResult__ = this->makeSuccess(startLocation__);
     }
     virtual void visitTemplateArgumentType(ast::TemplateArgumentType *node) override
     {
-#warning finish
     }
-    virtual void visitTemplateArgumentValue(ast::TemplateArgumentTypeValue *node) override
+    virtual void visitTemplateArgumentTypeValue(ast::TemplateArgumentTypeValue *node) override
     {
-#warning finish
     }
     virtual void visitTemplateArgumentConstant(ast::TemplateArgumentConstant *node) override
     {
-#warning finish
     }
-    virtual void visitTemplateArgumentVariableDeclaration(
-        ast::TemplateVariableDeclaration *node) override
+    virtual void visitTemplateVariableDeclaration(ast::TemplateVariableDeclaration *node) override
     {
-#warning finish
     }
     virtual void visitTemplateArgumentVariableReference(
         ast::TemplateArgumentVariableReference *node) override
     {
-#warning finish
     }
 };
 

@@ -69,9 +69,9 @@ struct Visitor
     virtual void visitTopLevelCodeSnippet(TopLevelCodeSnippet *node) = 0;
     virtual void visitType(Type *node) = 0;
     virtual void visitTemplateArgumentType(TemplateArgumentType *node) = 0;
-    virtual void visitTemplateArgumentValue(TemplateArgumentTypeValue *node) = 0;
+    virtual void visitTemplateArgumentTypeValue(TemplateArgumentTypeValue *node) = 0;
     virtual void visitTemplateArgumentConstant(TemplateArgumentConstant *node) = 0;
-    virtual void visitTemplateArgumentVariableDeclaration(TemplateVariableDeclaration *node) = 0;
+    virtual void visitTemplateVariableDeclaration(TemplateVariableDeclaration *node) = 0;
     virtual void visitTemplateArgumentVariableReference(TemplateArgumentVariableReference *node) = 0;
 };
 }

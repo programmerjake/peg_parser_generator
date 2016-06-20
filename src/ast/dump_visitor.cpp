@@ -317,7 +317,7 @@ void DumpVisitor::visitTemplateArgumentType(TemplateArgumentType *node)
     indentDepth--;
 }
 
-void DumpVisitor::visitTemplateArgumentValue(TemplateArgumentTypeValue *node)
+void DumpVisitor::visitTemplateArgumentTypeValue(TemplateArgumentTypeValue *node)
 {
     indent();
     os << "TemplateArgumentTypeValue type->name = " << node->type->name << " name = " << node->name
@@ -333,8 +333,7 @@ void DumpVisitor::visitTemplateArgumentConstant(TemplateArgumentConstant *node)
     indentDepth--;
 }
 
-void DumpVisitor::visitTemplateArgumentVariableDeclaration(
-    TemplateVariableDeclaration *node)
+void DumpVisitor::visitTemplateVariableDeclaration(TemplateVariableDeclaration *node)
 {
     indent();
     os << "TemplateVariableDeclaration type->name = " << node->type->name
@@ -344,7 +343,9 @@ void DumpVisitor::visitTemplateArgumentVariableDeclaration(
 void DumpVisitor::visitTemplateArgumentVariableReference(TemplateArgumentVariableReference *node)
 {
     indent();
-    os << "TemplateArgumentVariableReference nonterminal->name = " << node->nonterminal->name
-       << " index = " << node->index << std::endl;
+    os << "TemplateArgumentVariableReference" << std::endl;
+    indentDepth++;
+    node->declaration->visit(*this);
+    indentDepth--;
 }
 }

@@ -32,7 +32,7 @@ void test(std::string input)
 {
     try
     {
-        auto output = Parser(input).parseGoal();
+        auto output = Parser(input).parseGoal<true, true>();
         if(!output.empty())
             std::cout << input << "\n" << output << std::endl;
     }

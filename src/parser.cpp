@@ -77,6 +77,7 @@ struct Parser final
             LAngle,
             RAngle,
             Amp,
+            Comma,
             String,
             Identifier,
             EOFKeyword,
@@ -664,6 +665,11 @@ struct Parser final
                 get();
                 return Token(std::move(tokenLocation), Token::Type::RAngle, "");
             }
+            case ',':
+            {
+                get();
+                return Token(std::move(tokenLocation), Token::Type::Comma, "");
+            }
             default:
                 errorHandler(ErrorLevel::FatalError, tokenLocation, "invalid character");
                 return Token(std::move(tokenLocation), Token::Type::EndOfFile, "");
@@ -679,18 +685,18 @@ struct Parser final
             RuleResult,
         };
         Kind kind;
-        ast::TemplateArgument *templateArgument;
-        Variable() : kind(Kind::None), templateArgument()
+        ast::TemplateVariableDeclaration *templateVariableDeclaration;
+        Variable() : kind(Kind::None), templateVariableDeclaration()
         {
         }
-        Variable(Kind kind, ast::TemplateArgument *templateArgument)
-            : kind(kind), templateArgument(templateArgument)
+        Variable(Kind kind, ast::TemplateVariableDeclaration *templateVariableDeclaration)
+            : kind(kind), templateVariableDeclaration(templateVariableDeclaration)
         {
         }
     };
     std::unordered_map<std::string, ast::Nonterminal *> nonterminalTable;
     std::unordered_map<std::string, ast::Type *> typeTable;
-    std::unordered_map<std::string, Variable> variables;
+    std::unordered_map<ast::Nonterminal *, std::unordered_map<std::string, Variable>> variables;
     Tokenizer tokenizer;
     Token token;
     Arena &arena;
@@ -701,6 +707,7 @@ struct Parser final
     ast::TemplateArgumentTypeValue *templateFalseValue;
     ast::TemplateArgumentTypeValue *templateTrueValue;
     std::vector<ast::NonterminalExpression *> nonterminalReferences;
+    ast::Nonterminal *currentNonterminal = nullptr;
     Parser(Arena &arena, ErrorHandler &errorHandler, const Source *source)
         : tokenizer(source),
           token(tokenizer.parseToken(errorHandler)),
@@ -725,8 +732,13 @@ struct Parser final
         assert(token.type == Token::Type::Identifier);
         ast::Nonterminal *&retval = nonterminalTable[token.value];
         if(!retval)
-            retval = arena.make<ast::Nonterminal>(
-                token.location, token.value, nullptr, nullptr, ast::Nonterminal::Settings());
+            retval =
+                arena.make<ast::Nonterminal>(token.location,
+                                             token.value,
+                                             nullptr,
+                                             nullptr,
+                                             ast::Nonterminal::Settings(),
+                                             std::vector<ast::TemplateVariableDeclaration *>());
         return retval;
     }
     ast::Type *getType()
@@ -1035,9 +1047,62 @@ struct Parser final
         case Token::Type::Identifier:
         {
             auto nonterminal = getNonterminal();
-            auto retval = arena.make<ast::NonterminalExpression>(token.location, nonterminal, "");
+            auto retval =
+                arena.make<ast::NonterminalExpression>(token.location,
+                                                       nonterminal,
+                                                       currentNonterminal,
+                                                       "",
+                                                       std::vector<ast::TemplateArgument *>());
             nonterminalReferences.push_back(retval);
             next();
+            if(token.type == Token::Type::LAngle)
+            {
+                do
+                {
+                    next();
+                    if(token.type == Token::Type::TrueKeyword
+                       || token.type == Token::Type::FalseKeyword)
+                    {
+                        retval->templateArguments.push_back(
+                            arena.make<ast::TemplateArgumentConstant>(
+                                token.location,
+                                templateBoolType,
+                                token.type == Token::Type::TrueKeyword ? templateTrueValue :
+                                                                         templateFalseValue));
+                        next();
+                    }
+                    else if(token.type != Token::Type::Identifier)
+                    {
+                        errorHandler(
+                            ErrorLevel::FatalError, token.location, "missing variable name");
+                    }
+                    else
+                    {
+                        Variable &variable = variables[currentNonterminal][token.value];
+                        if(variable.kind == Variable::Kind::None)
+                        {
+                            errorHandler(
+                                ErrorLevel::Error, token.location, "undefined template variable");
+                        }
+                        else if(variable.kind != Variable::Kind::Template)
+                        {
+                            errorHandler(
+                                ErrorLevel::Error, token.location, "not a template variable");
+                        }
+                        retval->templateArguments.push_back(
+                            arena.make<ast::TemplateArgumentVariableReference>(
+                                token.location,
+                                variable.templateVariableDeclaration->type,
+                                variable.templateVariableDeclaration));
+                        next();
+                    }
+                } while(token.type == Token::Type::Comma);
+                if(token.type != Token::Type::RAngle)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing closing >");
+                }
+                next();
+            }
             if(token.type == Token::Type::Colon)
             {
                 next();
@@ -1052,10 +1117,12 @@ struct Parser final
                         errorHandler(
                             ErrorLevel::Error, token.location, "variable not allowed inside !");
                     }
-                    if(!std::get<1>(variableNames.insert(token.value)))
+                    Variable &variable = variables[currentNonterminal][token.value];
+                    if(variable.kind != Variable::Kind::None)
                     {
                         errorHandler(ErrorLevel::Error, token.location, "duplicate variable name");
                     }
+                    variable = Variable(Variable::Kind::RuleResult, nullptr);
                     retval->variableName = token.value;
                     next();
                 }
@@ -1114,10 +1181,12 @@ struct Parser final
                         errorHandler(
                             ErrorLevel::Error, token.location, "variable not allowed inside !");
                     }
-                    if(!std::get<1>(variableNames.insert(token.value)))
+                    Variable &variable = variables[currentNonterminal][token.value];
+                    if(variable.kind != Variable::Kind::None)
                     {
                         errorHandler(ErrorLevel::Error, token.location, "duplicate variable name");
                     }
+                    variable = Variable(Variable::Kind::RuleResult, nullptr);
                     retval->variableName = token.value;
                     next();
                 }
@@ -1208,6 +1277,8 @@ struct Parser final
             case Token::Type::TypedefKeyword:
             case Token::Type::CodeKeyword:
             case Token::Type::NamespaceKeyword:
+            case Token::Type::Comma:
+            case Token::Type::RAngle:
                 done = true;
                 break;
             case Token::Type::QMark:
@@ -1221,6 +1292,9 @@ struct Parser final
             case Token::Type::EOFKeyword:
             case Token::Type::CharacterClass:
             case Token::Type::CodeSnippet:
+            case Token::Type::TrueKeyword:
+            case Token::Type::FalseKeyword:
+            case Token::Type::LAngle:
                 break;
             }
             if(done)
@@ -1246,14 +1320,13 @@ struct Parser final
     }
     ast::Nonterminal *parseRule()
     {
-        variableNames.clear();
-        variableNames.insert("$$");
         if(token.type != Token::Type::Identifier)
         {
             errorHandler(ErrorLevel::FatalError, token.location, "missing rule name");
             return nullptr;
         }
         auto retval = getNonterminal();
+        currentNonterminal = retval;
         if(retval->expression)
         {
             errorHandler(ErrorLevel::Error, token.location, "rule already defined");
@@ -1261,6 +1334,56 @@ struct Parser final
             retval->expression = nullptr;
         }
         next();
+        if(token.type == Token::Type::LAngle)
+        {
+            do
+            {
+                next();
+                if(token.type != Token::Type::Identifier)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError, token.location, "missing template variable name");
+                }
+                std::string templateArgumentName = token.value;
+                auto templateArgumentLocation = token.location;
+                Variable &variable = variables[currentNonterminal][token.value];
+                if(variable.kind != Variable::Kind::None)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError, token.location, "duplicate template variable name");
+                }
+                next();
+                if(token.type != Token::Type::Colon)
+                {
+                    errorHandler(ErrorLevel::FatalError, token.location, "missing :");
+                }
+                next();
+                if(token.type != Token::Type::Identifier)
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError, token.location, "missing template variable type");
+                }
+                else if(token.value != "bool")
+                {
+                    errorHandler(
+                        ErrorLevel::FatalError,
+                        token.location,
+                        "unsupported template variable type (bool is the only type supported)");
+                }
+                next();
+                auto templateVariableDeclaration = arena.make<ast::TemplateVariableDeclaration>(
+                    std::move(templateArgumentLocation),
+                    templateBoolType,
+                    std::move(templateArgumentName));
+                variable = Variable(Variable::Kind::Template, templateVariableDeclaration);
+                retval->templateArguments.push_back(templateVariableDeclaration);
+            } while(token.type == Token::Type::Comma);
+            if(token.type != Token::Type::RAngle)
+            {
+                errorHandler(ErrorLevel::FatalError, token.location, "missing >");
+            }
+            next();
+        }
         if(token.type == Token::Type::Colon)
         {
             next();
@@ -1476,6 +1599,69 @@ struct Parser final
                 errorHandler(ErrorLevel::Error,
                              nonterminalReference->location,
                              "can't create a void variable");
+            }
+            if(nonterminalReference->templateArguments.empty()
+               && !nonterminalReference->value->templateArguments.empty())
+            {
+                for(auto templateArgument : nonterminalReference->value->templateArguments)
+                {
+                    Variable &variable =
+                        variables[nonterminalReference->containingNonterminal][templateArgument
+                                                                                   ->name];
+                    if(variable.kind == Variable::Kind::None)
+                    {
+                        errorHandler(ErrorLevel::Error,
+                                     nonterminalReference->location,
+                                     "can't resolve template argument: variable not found: ",
+                                     templateArgument->name);
+                    }
+                    else if(variable.kind != Variable::Kind::Template)
+                    {
+                        errorHandler(ErrorLevel::Error,
+                                     nonterminalReference->location,
+                                     "can't resolve template argument: not a template variable: ",
+                                     templateArgument->name);
+                    }
+                    else if(variable.templateVariableDeclaration->type != templateArgument->type)
+                    {
+                        errorHandler(ErrorLevel::Error,
+                                     nonterminalReference->location,
+                                     "can't resolve template argument: type mismatch: ",
+                                     templateArgument->name);
+                    }
+                    else
+                    {
+                        nonterminalReference->templateArguments.push_back(
+                            arena.make<ast::TemplateArgumentVariableReference>(
+                                nonterminalReference->location,
+                                templateArgument->type,
+                                variable.templateVariableDeclaration));
+                    }
+                }
+            }
+            else if(nonterminalReference->templateArguments.size()
+                    != nonterminalReference->value->templateArguments.size())
+            {
+                errorHandler(ErrorLevel::Error,
+                             nonterminalReference->location,
+                             "template argument count mismatch: declared with ",
+                             nonterminalReference->value->templateArguments.size(),
+                             ", called with ",
+                             nonterminalReference->templateArguments.size());
+            }
+            else
+            {
+                for(std::size_t index = 0; index < nonterminalReference->templateArguments.size();
+                    index++)
+                {
+                    if(nonterminalReference->value->templateArguments[index]->type
+                       != nonterminalReference->templateArguments[index]->type)
+                    {
+                        errorHandler(ErrorLevel::Error,
+                                     nonterminalReference->templateArguments[index]->location,
+                                     "type mismatch");
+                    }
+                }
             }
         }
         if(errorHandler.hasAnyErrors())
