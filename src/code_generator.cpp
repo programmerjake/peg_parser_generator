@@ -1429,10 +1429,13 @@ else
                 switch(substitution.kind)
                 {
                 case ast::ExpressionCodeSnippet::Substitution::Kind::ReturnValue:
-                    code.insert(substitution.position, "returnValue__");
+                    code.insert(substitution.position, "(returnValue__)");
                     continue;
                 case ast::ExpressionCodeSnippet::Substitution::Kind::PredicateReturnValue:
-                    code.insert(substitution.position, "predicateReturnValue__");
+                    code.insert(substitution.position, "(predicateReturnValue__)");
+                    continue;
+                case ast::ExpressionCodeSnippet::Substitution::Kind::Location:
+                    code.insert(substitution.position, "(static_cast<const ::std::size_t &>(startLocation__))");
                     continue;
                 }
                 assert(false);

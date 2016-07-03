@@ -30,6 +30,7 @@ code header {
 
 code source {
 // this is in the source
+#include <iostream>
 }
 
 namespace parser;
@@ -138,4 +139,4 @@ primaryExpression<escapesAllowedInIdentifiers:bool, newAllowed:bool>:string = "(
                   / identifier:identifier {$$ = identifier;}
                   / number:number {$$ = number;};
 
-goal<escapesAllowedInIdentifiers:bool, newAllowed:bool>:string = ws {$$ = "";} (expression:expression {$$ = expression + ";";} ";" ws)* EOF;
+goal<escapesAllowedInIdentifiers:bool, newAllowed:bool>:string = ws {$$ = "";} (expression:expression {$$ = expression + ";";} ";" {std::cout << $_ << std::endl;} ws)* EOF;

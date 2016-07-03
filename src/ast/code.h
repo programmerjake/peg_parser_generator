@@ -37,6 +37,7 @@ struct ExpressionCodeSnippet final : public Expression
         {
             ReturnValue,
             PredicateReturnValue,
+            Location,
         };
         Kind kind;
         std::size_t position;

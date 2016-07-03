@@ -502,6 +502,13 @@ struct Parser final
                                                        value.size());
                             get();
                         }
+                        else if(peek == '_')
+                        {
+                            substitutions.emplace_back(ast::ExpressionCodeSnippet::Substitution::
+                                                           Kind::Location,
+                                                       value.size());
+                            get();
+                        }
                         else
                         {
                             errorHandler(ErrorLevel::Warning,
