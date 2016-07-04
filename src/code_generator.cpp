@@ -580,7 +580,15 @@ struct CodeGenerator::CPlusPlus11 final : public CodeGenerator, public ast::Visi
 {
     Parser(const Parser &) = delete;
     Parser &operator=(const Parser &) = delete;
-
+)";
+        for(auto topLevelCodeSnippet : grammar->topLevelCodeSnippets)
+        {
+            if(topLevelCodeSnippet->kind == ast::TopLevelCodeSnippet::Kind::Class)
+            {
+                writeCode(headerFile, topLevelCodeSnippet->code, topLevelCodeSnippet->location);
+            }
+        }
+        headerFile << R"(
 private:
     struct RuleResult final
     {

@@ -1499,11 +1499,15 @@ struct Parser final
             {
                 kind = ast::TopLevelCodeSnippet::Kind::Source;
             }
+            else if(token.value == "class")
+            {
+                kind = ast::TopLevelCodeSnippet::Kind::Class;
+            }
             else
             {
                 errorHandler(ErrorLevel::Error,
                              token.location,
-                             "invalid code kind: expected license, header, or source");
+                             "invalid code kind: expected license, header, source, or class");
             }
             next();
         }

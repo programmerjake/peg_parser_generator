@@ -81,6 +81,7 @@ struct TopLevelCodeSnippet final : public Node
         License,
         Header,
         Source,
+        Class,
     };
     Kind kind;
     std::string code;

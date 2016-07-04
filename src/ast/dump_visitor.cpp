@@ -285,6 +285,9 @@ void DumpVisitor::visitTopLevelCodeSnippet(TopLevelCodeSnippet *node)
     case TopLevelCodeSnippet::Kind::Source:
         os << "Source";
         break;
+    case TopLevelCodeSnippet::Kind::Class:
+        os << "Class";
+        break;
     }
     os << " code = '";
     for(auto ch : node->code)

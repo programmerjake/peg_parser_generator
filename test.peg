@@ -33,6 +33,10 @@ code source {
 #include <iostream>
 }
 
+code class {
+// this is in the class
+}
+
 namespace parser;
 
 typedef std::string string;
